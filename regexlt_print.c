@@ -34,7 +34,7 @@ PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...)
    {
       vfprintf(stdout, fmt, argptr);
    }
-   va_end(argptr);
+   va_end(argptr);   // Adding a comment which does nothing.
 }
 
 // ---------------------------------- opcodeNames ----------------------------------------
