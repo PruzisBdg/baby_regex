@@ -84,6 +84,8 @@ PRIVATE RegexLT_S_Cfg cfg = {
    .maxStrLen     = MAX_U8
 };
 
+PRIVATE C8 const matchPhone1[] = "\\d{3}[ \\-]?\\d{3}[ \\-]?\\d{4}";
+
 PRIVATE S_Test const tests[] = {
    // Regex            Test string        Result code           Matches (if any)
    //                                                      {how_many [start, len]..}
@@ -119,6 +121,8 @@ PRIVATE S_Test const tests[] = {
    { "34+",          "2344456344448",        E_RegexRtn_Match,    {1, {{1,4}}}         },
    { "34+",          "2344456344448123445",  E_RegexRtn_Match,    {1, {{7,5}}},  _RegexLT_Flags_MatchLongest   },
    { "34+",          "2344456344448123445",  E_RegexRtn_Match,    {1, {{15,3}}}, _RegexLT_Flags_MatchLast      },
+   { matchPhone1,    "414 777 9214",         E_RegexRtn_Match,    {1, {{0,12}}}  },
+   { matchPhone1,    "414-777-9214",         E_RegexRtn_Match,    {1, {{0,12}}}  },
 };
 
 #else
@@ -132,11 +136,10 @@ PRIVATE RegexLT_S_Cfg cfg = {
    .maxStrLen     = MAX_U8
 };
 
-//PRIVATE C8 const getsPhoneNum[] = "\\d{3}[ -]?\\d{4}[ -]?\\d{4}";
-PRIVATE C8 const getsPhoneNum[] = "34+";
-
 PRIVATE S_Test const tests[] = {
-   { "\\d{3} \\d{4}",    "123 4567",      E_RegexRtn_Match,    {2, {{5,3}, {5,2}}}  },
+//   { "(\\d{3})|\\d{3}[ \\-]?\\d{3}[ \\-]?\\d{4}",    "414 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
+   { "(999)|(414)",    "414 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
+   //{ "(cat)|(dog)",    "bigdogs",              E_RegexRtn_Match,    {2, {{3,3}, {3,3}}}  },
 };
 
 #endif

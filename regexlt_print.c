@@ -113,9 +113,9 @@ PRIVATE void printCharBox(S_CharsBox const *cb, S_RepeatSpec const *rpts)
       if(lst->opcode == OpCode_Match)
       {
          if(cb->eatUntilMatch == TRUE)
-            { dbgPrint(" #"); }
+            { dbgPrint(" <<"); }
 
-         dbgPrint(" >>\r\n");
+         dbgPrint(" <end>\r\n");
       }
       else
          { dbgPrint("   %d: %s ", idx, opcodeNames(lst->opcode)); }
