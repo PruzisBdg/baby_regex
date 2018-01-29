@@ -71,7 +71,7 @@ PRIVATE C8 translateEscapedWhiteSpace(C8 const ** regexStr )
 
 /* ------------------------------ handleEscapedNonWhtSpc ---------------------------
 
-   Handle the following:
+   Handle the following one-character escaped chars:
 
       - escaped regex control chars e.g '\?', '\*'.
             These are made into their corresponding single-char single char literals
@@ -81,37 +81,40 @@ PRIVATE C8 translateEscapedWhiteSpace(C8 const ** regexStr )
             These are put into a character class which is linked to a (new) OpCode_Class.
 
    Return FALSE if 'ch' isn't one of the above. If success, then 'idx' is advanced
-   to the next instruction slot, which is written to 'OpCode_Null'
+   to the next S_Chars slot, which is written to 'OpCode_Null'
 */
 
 PRIVATE C8 const escapedChars[] = "\\|.*?{}()";
 
 PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_Chars *cb, T_InstrIdx *idx, C8 ch)
 {
-   C8 const    *cc;
-   S_ParseCharClass parseClass;
-   BOOL        rtn = FALSE;            // Until we succeed below.
-   T_InstrIdx  i = *idx;
+   C8 const    *preBakedClass;
+   BOOL        rtn = FALSE;                     // Until we succeed below.
+   T_InstrIdx  i = *idx;                        // Current cb[i].
 
-   if(strchr(escapedChars, ch) != NULL)                                          // Literal of a regex control char?
+   if(cb[i].opcode != OpCode_Null)                                                  // Not already on an empty 'S_Chars'.
+      { cb[++i].opcode = OpCode_Null; }                                             // then advance to next slot. Make sure it's clean; it will likely be filled below.
+
+   if(strchr(escapedChars, ch) != NULL)                                             // Literal of a regex control char?
    {
-      cb[++i].opcode = OpCode_EscCh;                                             // will go in this.
-      cb[i].payload.esc.ch = ch;                                                 // the char s this
-      cb[++i].opcode = OpCode_Null;                                              // Clear the next instruction slot (being tidy)
-      rtn = TRUE;                                                                // and we succeeded
+      cb[i].opcode = OpCode_EscCh;                                                  // will go in this next cb[i]
+      cb[i].payload.esc.ch = ch;                                                    // the char s this
+      cb[++i].opcode = OpCode_Null;                                                 // Clear the next S_Chars slot (being tidy)
+      rtn = TRUE;                                                                   // and we succeeded
    }
-   else if((cc = getCharClassByKey(ch)) != NULL)                                 // else a predefined char class e.g '\w'
+   else if((preBakedClass = getCharClassByKey(ch)) != NULL)                         // else a predefined char class e.g '\w'
    {
-      if( (cb[i].payload.charClass = CharClass_New(cl)) != NULL  ) {             // Obtained a fresh empty class?
-         classParser_Init(&parseClass);                                                // Start the private parser.
-         if( classParser_AddDef(&parseClass, cb[i].payload.charClass, cc) == TRUE ) {  // Success adding pre-baked char class? (should be, it's pre-baked by us)
-            cb[i].opcode = OpCode_Class;                                         // then label wot we made.
-            cb[++i].opcode = OpCode_Null;                                        // Next instruction cleaned to 'Null'.
-            rtn = TRUE;                                                          // and Success.
-         }
-      }
+      S_ParseCharClass parseClass;
+
+      if( (cb[i].payload.charClass = CharClass_New(cl)) != NULL  ) {              // Obtained a fresh empty class?, in the next cb[i]
+         classParser_Init(&parseClass);                                             // Start the private parser.
+                                                                                    // Success adding char class? (should be, the class was pre-baked by us)
+         if( classParser_AddDef(&parseClass, cb[i].payload.charClass, preBakedClass) == TRUE ) {
+            cb[i].opcode = OpCode_Class;                                            // then label wot we made.
+            cb[++i].opcode = OpCode_Null;                                           // Next instruction cleaned to 'Null'.
+            rtn = TRUE; }}                                                          // and Success.
    }
-   *idx = i;                        // Instruction index may have advanced; write it back.
+   *idx = i;                        // Instruction index likely advanced; write it back.
    return rtn;
 }
 
@@ -156,8 +159,8 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
    S_ParseCharClass parseClass;
    T_ParseRtn rtn;
 
-   T_InstrIdx idx = 0;
    S_Chars * cb = cBox->buf;
+   T_InstrIdx idx = 0;                 // Fill 'cb' starting at cBox->buf[0].
 
    /* If got a '(' rightaway. then this chars-list either opens a subgroup or will be an
       an entire subgroup.
@@ -205,7 +208,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                   case '{':      // Opening a repeat specifier (for the previous char/class/group).
                   case '(':
                      if(cb[idx].opcode != OpCode_Null) idx++;        // If necessary, advance to an open 'Null' char-box.
-                     cb[idx].opcode = OpCode_Match;
+                     cb[idx].opcode = OpCode_Match;                  // Write a '_Match' terminator to this empty box.
                      cBox->len = idx+1;
                      return TRUE;
 
@@ -224,10 +227,22 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                      break;
 
                   case '\\':     // e.g '\d','\w', anything which wasn't captured by translateEscapedWhiteSpace() (above).
-                     if( handleEscapedNonWhtSpc(cl, cb, &idx, *(++(*regexStr))) == FALSE)
-                        { return FALSE; }
+                     if(cb[idx].opcode == OpCode_Chars &&            // Already building a Chars-Box? AND
+                        isaRepeat( (*regexStr)+2 ))                  // Repeat operator e.g '+' or '{3}' follows this e.g '\d'.
+                     {
+                        cb[++idx].opcode = OpCode_Match;             // then finish the Chars-Box we have so far....
+                        cBox->len = idx+1;
+                        return TRUE;                                 // return the new Chars-Box WITHOUT advancing '*regexStr'...
+                     }                                               // ...the escape, e.g '\d' will go into its own Box, following a '_Split' which holds it's repeat count..
                      else
-                        { break; }
+                     {
+                        if( handleEscapedNonWhtSpc(cl, cb, &idx, *(++(*regexStr)) ) == FALSE)
+                           { return FALSE; }
+                        else
+                        {
+                           break;
+                        }
+                     }
 
                   default:       // Either non-control char e.g 'a', or CR,LF,TAB, emitted by translateEscapedWhiteSpace() (above)
                      if(!isprint(ch))                                // Non-printable?
@@ -249,7 +264,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                            */
                            C8 const * rr = (*regexStr)+1;
 
-                           if(isaRepeat(rr))         // A repeat-operator e.g '+' follows the current char?
+                           if(isaRepeat(rr))                         // A repeat-operator e.g '+' follows the current char?
                            {
                               cb[++idx].opcode = OpCode_Match;       // then finish the Box we have so far.
                               cBox->len = idx+1;

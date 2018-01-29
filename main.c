@@ -74,7 +74,7 @@ typedef struct {
 } S_Test;
 
 
-#if 1
+#if 0
 PRIVATE RegexLT_S_Cfg cfg = {
    .getMem        = getMemCleared,
    .free          = myFree,
@@ -136,7 +136,7 @@ PRIVATE RegexLT_S_Cfg cfg = {
 PRIVATE C8 const getsPhoneNum[] = "34+";
 
 PRIVATE S_Test const tests[] = {
-   { "\\d{3}",    "123 4567",      E_RegexRtn_Match,    {2, {{5,3}, {5,2}}}  },
+   { "\\d{3} \\d{4}",    "123 4567",      E_RegexRtn_Match,    {2, {{5,3}, {5,2}}}  },
 };
 
 #endif
@@ -274,7 +274,7 @@ PRIVATE BOOL matchesOK(RegexLT_S_MatchList const *ml, S_MatchesCheck const *chk)
 
    for(c = 0, rtn = TRUE; c < chk->numMatches; c++)
    {
-      if( c > ml->put)
+      if( c >= ml->put)             // More matches in check-list than were found (in 'ml')?
       {
          printf("\tToo few matches: got %d reqd %d\r\n", ml->put, chk->numMatches);
          rtn = FALSE;
@@ -364,7 +364,7 @@ int main()
    RegexLT_Init(&cfg);
 
       #ifdef TEST_RIGHT_OPERATOR
-   testRightOp();
+   testRightOp();RegexLT_Match
    return 1;
       #endif
 

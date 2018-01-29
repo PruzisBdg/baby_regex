@@ -34,7 +34,7 @@ PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...)
    {
       vfprintf(stdout, fmt, argptr);
    }
-   va_end(argptr);   // Adding a comment which does nothing.
+   va_end(argptr);
 }
 
 // ---------------------------------- opcodeNames ----------------------------------------
@@ -78,17 +78,35 @@ PRIVATE C8 const * printsEscCh(C8 ch)
    }
 }
 
+/* ------------------------------ printAnyRepeats ------------------------------------- */
+
+PRIVATE void printAnyRepeats(S_RepeatSpec const *rpts)
+{
+   if(rpts != NULL) {
+      if(rpts->valid == TRUE) {
+         if(rpts->min == rpts->max && rpts->min > 0)
+            { dbgPrint(" {%d}", rpts->min); }
+         else if(rpts->min > rpts->max)
+            { dbgPrint(" {%d,%d BAD!!", rpts->min, rpts->max); }
+         else if(rpts->max == _Repeats_Unlimited)
+            { dbgPrint(" {%d,*}", rpts->min); }
+         else if(1)
+            { dbgPrint(" {%d,%d}", rpts->min, rpts->max); }
+      }
+   }
+}
+
 /* ------------------------------- printCharBox ---------------------------------------- */
 
 
-PRIVATE void printCharBox(S_CharsBox *cb)
+PRIVATE void printCharBox(S_CharsBox const *cb, S_RepeatSpec const *rpts)
 {
    #define _PrintBufSize 100
-   C8    buf[_PrintBufSize];
-   C8       listClass[256];
-   U8       numChars;
-   U8       idx;
-   S_Chars  *lst = cb->buf;
+   C8          buf[_PrintBufSize];
+   C8          listClass[256];
+   U8          numChars;
+   T_InstrIdx  idx;
+   S_Chars     *lst = cb->buf;
 
    for(idx = 0; lst->opcode != OpCode_Null && idx < 10; idx++, lst++)
    {
@@ -124,6 +142,9 @@ PRIVATE void printCharBox(S_CharsBox *cb)
             break;
 
       }
+      if(lst->opcode != OpCode_Null && lst->opcode != OpCode_Match)
+         { printAnyRepeats(rpts); }
+
       // If this char-list closes a subgroup then print ')' to the right of the chars-list .
       if(cb->closesGroup == TRUE && lst->opcode != OpCode_Match)  // But don't print bracket for 'Match' terminator. It's confusing.
          dbgPrint(")");
@@ -138,11 +159,11 @@ PRIVATE void printCharBox(S_CharsBox *cb)
 PUBLIC void regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb)
 {
    #define _PrintBufSize 100
-   C8    buf[_PrintBufSize];
-   C8       listClass[256];
-   U8       numChars;
-   U8       idx;
-   S_Chars  *lst = cb->buf;
+   C8          buf[_PrintBufSize];
+   C8          listClass[256];
+   U8          numChars;
+   T_InstrIdx  idx;
+   S_Chars     *lst = cb->buf;
 
    out[0] = '\0';
 
@@ -150,7 +171,7 @@ PUBLIC void regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb)
    {
       // If this char-list opens a subgroup then print '(' to the left of the chars-list .
       if(cb->opensGroup == TRUE && lst->opcode != OpCode_Match)   // But don't print bracket for 'Match' terminator. It's confusing.
-         sprintf(EndStr(out), "(");
+      sprintf(EndStr(out), "(");
 
       switch(lst->opcode) {
          case OpCode_Chars:
@@ -183,39 +204,40 @@ PUBLIC void regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb)
 
 PUBLIC void regexlt_printProgram(S_Program *prog)
 {
-   U8 idx;
+   T_InstrIdx idx;
 
-   S_Instr *bc = prog->instrs.buf;
+   S_Instr *instr = prog->instrs.buf;
+   S_RepeatSpec const *rpts;
 
-   for(idx = 0; idx < prog->instrs.put && idx < 20; idx++, bc++)
+   dbgPrint("------ Compiled Regex:\r\n");
+
+   for(idx = 0, rpts = NULL; idx < prog->instrs.put && idx < 20; idx++, instr++)
    {
-      dbgPrint("%d: %s ", idx, opcodeNames(bc->opcode));
+      dbgPrint("%d: %s ", idx, opcodeNames(instr->opcode));
 
-      switch(bc->opcode) {
+      switch(instr->opcode) {
 
          case OpCode_CharBox:
-            if(bc->charBox.buf == NULL)
+            if(instr->charBox.buf == NULL)
                {dbgPrint("empty CharBox\r\n");}
             else
-               { dbgPrint("\r\n"); printCharBox(&bc->charBox); }
+               { dbgPrint("\r\n"); printCharBox(&instr->charBox, rpts);
+                 rpts = NULL; }                                      // Repeat spec, if any, was printed. Cancel so we don't reprint.
             break;
 
          case OpCode_Jmp:
-            dbgPrint("%d ", bc->left);
+            dbgPrint("%d ", instr->left);
             break;
 
          case OpCode_Split:
-            dbgPrint("(%d, %d) ", bc->left, bc->right);
-
-            if(bc->repeats.valid == TRUE)
-            {
-               if(bc->repeats.max == _Repeats_Unlimited)
-                  { dbgPrint("{%d,*} ", bc->repeats.min); }
-               else
-                  { dbgPrint("{%d,%d} ", bc->repeats.min, bc->repeats.max); }
-            }
+            dbgPrint("(%d, %d) ", instr->left, instr->right);
+            /* Any repeat-specification for the following Char-Box is held with (this) '_Split'.
+               For clarity we want to print repeat-spec after the contents of the Char_Box. Take a
+               ref now to use later with the 'case OpCode_CharBox:'.
+            */
+            rpts = &instr->repeats;
       }
-      if(bc->opcode != OpCode_CharBox) { dbgPrint("\r\n"); }
+      if(instr->opcode != OpCode_CharBox) { dbgPrint("\r\n"); }
    }
    dbgPrint("\r\n");
 }

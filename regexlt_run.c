@@ -345,6 +345,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
    RegexLT_T_MatchIdx matchStart = 0;
 
+   dbgPrint("------ Trace:\r\n");
+
    /* Run 'prog', which will create and terminate threads. Do until we either reach 'Match'
       in 'prog' (success) OR no more threads scheduled, meaning we exhausted the input
       string without a match (fail).
