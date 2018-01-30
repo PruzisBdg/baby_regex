@@ -106,7 +106,7 @@ PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_Chars *cb, T_InstrIdx *
    {
       S_ParseCharClass parseClass;
 
-      if( (cb[i].payload.charClass = CharClass_New(cl)) != NULL  ) {              // Obtained a fresh empty class?, in the next cb[i]
+      if( (cb[i].payload.charClass = CharClass_New(cl)) != NULL  ) {                // Obtained a fresh empty class?, in the next cb[i]
          classParser_Init(&parseClass);                                             // Start the private parser.
                                                                                     // Success adding char class? (should be, the class was pre-baked by us)
          if( classParser_AddDef(&parseClass, cb[i].payload.charClass, preBakedClass) == TRUE ) {
@@ -234,14 +234,12 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                         cBox->len = idx+1;
                         return TRUE;                                 // return the new Chars-Box WITHOUT advancing '*regexStr'...
                      }                                               // ...the escape, e.g '\d' will go into its own Box, following a '_Split' which holds it's repeat count..
-                     else
+                     else                                            // else we add to the current Chars-Box
                      {
-                        if( handleEscapedNonWhtSpc(cl, cb, &idx, *(++(*regexStr)) ) == FALSE)
-                           { return FALSE; }
+                        if( handleEscapedNonWhtSpc(cl, cb, &idx, *(++(*regexStr)) ) == FALSE)   // Was not a legal escaped thingy?
+                           { return FALSE; }                         // then parse fail.
                         else
-                        {
-                           break;
-                        }
+                           { break; }                                // else success; the escaped thingy is added to current Chars-Box.
                      }
 
                   default:       // Either non-control char e.g 'a', or CR,LF,TAB, emitted by translateEscapedWhiteSpace() (above)
@@ -597,6 +595,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
             case '\0':                                // --- End of regex
                if(forked == TRUE)                        // But were waiting for char-right of an alternate?
                {
+printf("Barfed here\r\n");
                   return FALSE;                          // So parse fail
                }
                else                                      // else compile is complete
@@ -690,7 +689,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                else                                      // else 'cb' has the chars (and 'rs' is advanced to next un-read input)
                {
                   gotCharBox = TRUE;                     // Mark that there's an assembled Box.
-
+printf("Got CharBox %c %c %d\r\n", *ps, *rs, *rs);
                   if(firstOp == 0)
                      { firstOp = rightOperator(ps); }
 
@@ -734,7 +733,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                      }
 
                      C8 rop = rightOperator(ps);
-
+printf("rem %s rop %c\r\n", ps, rop);
                      if( rop == '$' )
                      {
                         addJumpAbs(prog, jmpMark, jmpMark + boxesToRight + 2 );
