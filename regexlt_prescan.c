@@ -191,7 +191,7 @@ PRIVATE void prescanError(S_CntRegexParts const *ctx, T_RegexParts_Rtn err, U8 i
 {
    C8 buf[10];
    if(isprint(ch)) { sprintf(buf, "\'%c\'", ch); } else { sprintf(buf, "\\x%x", ch); }
-   dbgPrint("------ Prescan: error, %s at [%d %s]", prescanErrName(err), idx, buf);
+   dbgPrint("\r\n------ Prescan: error, %s at [%d %s]", prescanErrName(err), idx, buf);
 }
 
 /* ------------------------------------- regexlt_prescan ----------------------------------------

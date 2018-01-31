@@ -42,13 +42,13 @@ PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...)
 PRIVATE C8 const *opcodeNames(T_OpCode op)
 {
    switch(op) {
-      case OpCode_Null:    return "Null";
+      case OpCode_Null:    return "Null ";
       case OpCode_NOP:     return "No-Op";
       case OpCode_Chars:   return "Chars";
-      case OpCode_EscCh:   return "Esc";
+      case OpCode_EscCh:   return "Esc  ";
       case OpCode_Class:   return "Class";
-      case OpCode_CharBox: return "CharBox";
-      case OpCode_Jmp:     return "Jmp";
+      case OpCode_CharBox: return "CBox ";
+      case OpCode_Jmp:     return "Jmp  ";
       case OpCode_Split:   return "Split";
       case OpCode_Match:   return "Match";
       default:             return "unknown opcode";
@@ -118,7 +118,7 @@ PRIVATE void printCharBox(S_CharsBox const *cb, S_RepeatSpec const *rpts)
          dbgPrint(" <end>\r\n");
       }
       else
-         { dbgPrint("   %d: %s ", idx, opcodeNames(lst->opcode)); }
+         { dbgPrint("%d: %s ", idx, opcodeNames(lst->opcode)); }
 
       // If this char-list opens a subgroup then print '(' to the left of the chars-list .
       if(cb->opensGroup == TRUE && lst->opcode != OpCode_Match)   // But don't print bracket for 'Match' terminator. It's confusing.
@@ -221,7 +221,8 @@ PUBLIC void regexlt_printProgram(S_Program *prog)
             if(instr->charBox.buf == NULL)
                {dbgPrint("empty CharBox\r\n");}
             else
-               { dbgPrint("\r\n"); printCharBox(&instr->charBox, rpts);
+               { printCharBox(&instr->charBox, rpts);
+//               { dbgPrint("\r\n"); printCharBox(&instr->charBox, rpts);
                  rpts = NULL; }                                      // Repeat spec, if any, was printed. Cancel so we don't reprint.
             break;
 

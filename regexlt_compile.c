@@ -464,16 +464,16 @@ PRIVATE S_CharsBox * lookaheadFor_GroupClose(S_CharsBox *cb, C8 const *rs)
       'a?bc'      -> '?'
       'abc'       -> '$'       (end of string)
       'abc(def)+' ->  E       'abc' has no rightward operator; it's not controlled by the '+'.
-      'ab+c'      ->          '+' does not apply to 'a'
+      'ab+c'      ->  E       '+' does not apply to 'a'
       '(ab)*c     -> '*'      '*' applies to the 1st subgroup.
       'dog|cat'   -> '|'      ('|' is right-associative, applies to all of 'dog'.
       'a(dog|cat) ->  E       '|' does no apply to 'a'.
 */
 
-
-
 PRIVATE BOOL isPostOpCh(C8 ch)
    { return ch == '{' || ch == '?' || ch == '*' || ch == '+'; }
+
+//#define TRACE_RIGHT_OP
 
 
 PUBLIC C8 rightOperator(C8 const *rgx)
@@ -490,8 +490,10 @@ PUBLIC C8 rightOperator(C8 const *rgx)
       if(ch == '\\') {                          // Backslash?
          esc = !esc;                            // If prev char was NOT backslash, next char will be escaped, and vice versa.
          if(esc) {                              // Escaped now?
-      //printf("ch %c inCh %d esc %d inClass %d grpCnt %d inSub %d\r\n",
-     //          ch, inCh, esc, inClass, grpCnt, inSub);
+                  #ifdef TRACE_RIGHT_OP
+               dbgPrint("ch %c inCh %d esc %d inClass %d grpCnt %d inSub %d\r\n",
+                     ch, inCh, esc, inClass, grpCnt, inSub);
+                  #endif
             continue;}}                         // then continue to the next (escaped) char
 
       if(esc){                                  // This char is escaped?
@@ -554,8 +556,10 @@ PUBLIC C8 rightOperator(C8 const *rgx)
                         { grpCnt++; }           // then post-operator binds this char, so previous chars make one more char-group.
                      } }}}}
 
-      //printf("ch %c inCh %d esc %d inClass %d grpCnt %d inSub %d\r\n",
-      //        ch, inCh, esc, inClass, grpCnt, inSub);
+                  #ifdef TRACE_RIGHT_OP
+               dbgPrint("ch %c inCh %d esc %d inClass %d grpCnt %d inSub %d\r\n",
+                     ch, inCh, esc, inClass, grpCnt, inSub);
+                  #endif
    }
    return
       grpCnt > 1     // Passed one or more subgroups on the way to '\0'?
