@@ -137,9 +137,8 @@ PRIVATE RegexLT_S_Cfg cfg = {
 };
 
 PRIVATE S_Test const tests[] = {
-//   { "(\\d{3})|\\d{3}[ \\-]?\\d{3}[ \\-]?\\d{4}",    "414 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
-   { "(999)|(234)",    "414 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
-   //{ "(cat)|(dog)",    "bigdogs",              E_RegexRtn_Match,    {2, {{3,3}, {3,3}}}  },
+//   { "\\(?\\d{3}[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
+   { "a4{3}",    "a444",      E_RegexRtn_Match,    {1, {{0,12}}}  },
 };
 
 #endif
@@ -156,7 +155,7 @@ typedef struct {
    C8 rtn;
 } S_TestRightOperator;
 
-PRIVATE S_TestRightOperator const rightOpTsts[] = {
+PRIVATE S_TestRightOperator const rightOpTests[] = {
    { "abc",    '$' },
    { "a+",     '+' },
    { "a?",     '?' },
@@ -204,6 +203,8 @@ PRIVATE S_TestRightOperator const rightOpTsts[] = {
    { "(a)bb",  'E' },
    { "(a)",    '$' },
 
+   { "(\\d)",    '$' },
+
    // Nesting
    { "(ab(cd))", '$' },
    { "(ab(cd))e", 'E' },
@@ -227,16 +228,27 @@ PRIVATE S_TestRightOperator const rightOpTsts[] = {
 
 };
 
-PRIVATE void testRightOp(void)
+PRIVATE S_TestRightOperator const ropTstB[] = {
+   { "(\\d)",    '$' },
+};
+
+#define _ropTsts rightOpTests
+
+PRIVATE void testRightOp(S_TestRightOperator const *tbl, U16 tblSize)
 {
-   U8 c;
-   C8 rtn;
-   for(c = 0; c < RECORDS_IN(rightOpTsts); c++)
+   U8 c, fails; C8 rtn;
+
+   for(c = 0, fails = 0; c < tblSize; c++)
    {
-      if( (rtn = rightOperator( rightOpTsts[c].tstStr)) != rightOpTsts[c].rtn )
+      if( (rtn = rightOperator( tbl[c].tstStr)) != tbl[c].rtn )
       {
-         printf("right operator fail: %s -> %c but got %c\r\n", rightOpTsts[c].tstStr, rightOpTsts[c].rtn, rtn);
+         printf("right operator fail: %s -> %c but got %c\r\n", tbl[c].tstStr, tbl[c].rtn, rtn);
+         fails++;
       }
+   }
+   if(fails == 0)
+   {
+      printf("right operator - Passed %d tests\r\n", c);
    }
 }
    #endif // #ifdef TEST_RIGHT_OPERATOR
@@ -367,7 +379,8 @@ int main()
    RegexLT_Init(&cfg);
 
       #ifdef TEST_RIGHT_OPERATOR
-   testRightOp();RegexLT_Match
+   //testRightOp(rightOpTests, RECORDS_IN(rightOpTests));
+   testRightOp(_ropTsts, RECORDS_IN(_ropTsts));
    return 1;
       #endif
 

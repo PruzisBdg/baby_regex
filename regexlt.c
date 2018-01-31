@@ -108,7 +108,7 @@ PUBLIC void RegexLT_PrintMatchList_OnOneLine(RegexLT_S_MatchList const *ml)
       { printf("------ No matches"); }
    else                                            // at least a global match
    {
-      printf("------ Matches: ");
+      dbgPrint("------ Matches: ");
       U8 c;
       for( c = 0; c < ml->put; c++ )
          { printOneMatch(&ml->matches[c]); }       // 'subs: [1,43 'dog'  [7,9] 'cat'

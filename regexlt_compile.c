@@ -490,17 +490,22 @@ PUBLIC C8 rightOperator(C8 const *rgx)
       if(ch == '\\') {                          // Backslash?
          esc = !esc;                            // If prev char was NOT backslash, next char will be escaped, and vice versa.
          if(esc) {                              // Escaped now?
+      //printf("ch %c inCh %d esc %d inClass %d grpCnt %d inSub %d\r\n",
+     //          ch, inCh, esc, inClass, grpCnt, inSub);
             continue;}}                         // then continue to the next (escaped) char
 
       if(esc){                                  // This char is escaped?
          esc = FALSE;                           // then cancel escape; it applies just to this char, which we process now.
-         if(!inCh) {                            // Starting char sequence?
-            inCh = TRUE;
-            grpCnt++;                           // then we have one more char-group
+         if(inSub == 0) {                       // Not currently nested?
+            if(!inCh) {                         // Starting char sequence?
+               inCh = TRUE;
+               grpCnt++;                        // then we have one more char-group
+            }
+            else {                              // otherwise already in char-sequence.
+               if( isPostOpCh(*(rp+1))) {       // Next char is a post-op, '+','*' etc?
+                  grpCnt++; }}                  // then post-operator binds this char, so previous chars make one more char-group.
+            }
          }
-         else {                                 // otherwise already in char-sequence.
-            if( isPostOpCh(*(rp+1))) {          // Next char is a post-op, '+','*' etc?
-               grpCnt++; }}}                    // then post-operator binds this char, so previous chars make one more char-group.
       else {                                    // else this char is not escaped; must look for groups, classes etc.
          if(inClass) {                          // In a '[A-Z]'?
             if(ch == ']') {                     // Closing ']'?
@@ -548,6 +553,9 @@ PUBLIC C8 rightOperator(C8 const *rgx)
                      else if( isPostOpCh(*(rp+1))) // else if already in char sequence AND next char is a post-op?
                         { grpCnt++; }           // then post-operator binds this char, so previous chars make one more char-group.
                      } }}}}
+
+      //printf("ch %c inCh %d esc %d inClass %d grpCnt %d inSub %d\r\n",
+      //        ch, inCh, esc, inClass, grpCnt, inSub);
    }
    return
       grpCnt > 1     // Passed one or more subgroups on the way to '\0'?
@@ -689,7 +697,7 @@ printf("Barfed here\r\n");
                else                                      // else 'cb' has the chars (and 'rs' is advanced to next un-read input)
                {
                   gotCharBox = TRUE;                     // Mark that there's an assembled Box.
-printf("Got CharBox %c %c %d\r\n", *ps, *rs, *rs);
+//printf("Got CharBox %c %c %d\r\n", *ps, *rs, *rs);
                   if(firstOp == 0)
                      { firstOp = rightOperator(ps); }
 
@@ -733,7 +741,7 @@ printf("Got CharBox %c %c %d\r\n", *ps, *rs, *rs);
                      }
 
                      C8 rop = rightOperator(ps);
-printf("rem %s rop %c\r\n", ps, rop);
+//printf("rem %s rop %c\r\n", ps, rop);
                      if( rop == '$' )
                      {
                         addJumpAbs(prog, jmpMark, jmpMark + boxesToRight + 2 );
