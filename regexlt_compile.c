@@ -152,6 +152,8 @@ PRIVATE BOOL isaRepeat(C8 const *rgx)
       - there's an illegal regex construction e.g ']' before an '['.
       - couldn't malloc() for a (needed) character class.
 */
+extern C8 const *opcodeNames(T_OpCode op);
+
 
 PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexStr)
 {
@@ -227,10 +229,11 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                      break;
 
                   case '\\':     // e.g '\d','\w', anything which wasn't captured by translateEscapedWhiteSpace() (above).
-                     if(cb[idx].opcode == OpCode_Chars &&            // Already building a Chars-Box? AND
+                     if( idx > 0 &&                                  // Already building some Chars-Box? AND
                         isaRepeat( (*regexStr)+2 ))                  // Repeat operator e.g '+' or '{3}' follows this e.g '\d'.
-                     {
-                        cb[++idx].opcode = OpCode_Match;             // then finish the Chars-Box we have so far....
+                     {                                               // then finish the Chars-Box we have so far....
+                        if(cb[idx].opcode != OpCode_Null) { idx++; } // If on an existing Chars-Box then advance to empty slot...
+                        cb[idx].opcode = OpCode_Match;               // ...and terminate the CBox.
                         cBox->len = idx+1;
                         return TRUE;                                 // return the new Chars-Box WITHOUT advancing '*regexStr'...
                      }                                               // ...the escape, e.g '\d' will go into its own Box, following a '_Split' which holds it's repeat count..
@@ -248,7 +251,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                         if(cb[idx].opcode != OpCode_Null) idx++;     // If necessary, advance to an open 'Null' char-box.
 
                         cb[idx].opcode = OpCode_EscCh;               // and make an EscCh instruction
-                        cb[idx++].payload.esc.ch = ch;               // Put ASCII code in 'OpCode_EscCh'.
+                        cb[idx].payload.esc.ch = ch;               // Put ASCII code in 'OpCode_EscCh'.
                         cb[++idx].opcode = OpCode_Null;              // Advance to an open 'Null slot'.
                      }
                      else                                            // else printable
@@ -301,10 +304,10 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
          }
          (*regexStr)++;
       }
+
    }
    return TRUE;
 }
-
 
 /* ------------------------ Add operation(s) to program -----------------------------
 

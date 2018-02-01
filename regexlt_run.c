@@ -449,7 +449,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
             .lst = &thrd->matches, .clone = TRUE, .newBufSize = maxMatches };
 
          cs = sp;
-
+//dbgPrint("cs=sp --------- %c %d\r\n", *cs, ti);
          switch(ip->opcode )                          // Opcode is?...
          {
             case OpCode_NOP:                          // ---- A No-op, from open-subgroup '(', which was not later filled by 'Split'
@@ -463,8 +463,9 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
                   addL = FALSE; addR = FALSE; cput = next->put;
 
-                  if( matchCharsList(ip->charBox.buf, &sp, mustEnd) == TRUE)     // Matched current CharBox?
-                  {
+                  if( matchCharsList(ip->charBox.buf, &sp, mustEnd) == TRUE)     // Matched current CharBox?...
+                  {                                                              // ...yes, 'sp' is now at 1st char AFTER matched segment.
+//dbgPrint("matchLst ---------- %c %c %d\r\n", *cs, *sp, ti);
                      addL = TRUE;                                                // so we will advance this thread
                      matchStart = m0;                                            // ...and the mark we kept may be start of global match
                      newT = newThread(pc+1, sp, loopCnt, gs, &dfltMatchCfg, _StopAtMismatch);
@@ -473,13 +474,15 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      {
                         if(ip->opensGroup)                                       // and this chars-list also opened a subgroup
                         {
+//dbgPrint("addM1 ---------- %c - %c\r\n", *cs, *(sp-1));
                            newT->subgroupStart = cs;
                            addMatch(newT, str, cs, sp-1);
                         }
                      }
                      else if(ip->opensGroup && newT->subgroupStart == NULL)      // else this path opens a subgroup now?
                      {
-                        newT->subgroupStart = sp;                                // Mark the start -> will be copied into the fresh thread
+//dbgPrint("openSub1 -------- %c ti %d\r\n", *sp, ti);
+                        newT->subgroupStart = sp-1;                                // Mark the start -> will be copied into the fresh thread
                      }
                      addThread(next, newT);                                      // Add thread we made to 'next'
 
@@ -535,11 +538,13 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      {
                         if(ip->opensGroup && gs == NULL)                         // and this chars-list also opened a subgroup
                         {
+//dbgPrint("addM2 ---------- %c - %c\r\n", *cs, *(sp-1));
                            newT->subgroupStart = cs;
                            addMatch(newT, str, cs, sp-1);
                         }
                         else if(gs != NULL)                                      // else is there's was an open subgroup on this path (which we close now)?
                         {
+//dbgPrint("addM3 ---------- %c - %c\r\n", *gs, *(sp-1));
                            addMatch(newT, str, gs, sp-1);
                         }
                      }
@@ -586,6 +591,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   for(c = 0; c < thrd->matches.put; c++)                         // Append any submatches.
                   {
                      S_Match *m = &thrd->matches.ms[c];
+//dbgPrint("sub-match ------------- %d %d\r\n", m->idx, m->len);
                      recordMatch(ml, str+m->idx, m->idx, m->len, _ReplaceShorter);
                   }
                }

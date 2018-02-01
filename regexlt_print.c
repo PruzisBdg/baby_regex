@@ -39,18 +39,24 @@ PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...)
 
 // ---------------------------------- opcodeNames ----------------------------------------
 
-PRIVATE C8 const *opcodeNames(T_OpCode op)
+PUBLIC C8 const *opcodeNames(T_OpCode op)
 {
    switch(op) {
-      case OpCode_Null:    return "Null ";
+      // Program nstruction codes
       case OpCode_NOP:     return "No-Op";
-      case OpCode_Chars:   return "Chars";
-      case OpCode_EscCh:   return "Esc  ";
-      case OpCode_Class:   return "Class";
       case OpCode_CharBox: return "CBox ";
       case OpCode_Jmp:     return "Jmp  ";
       case OpCode_Split:   return "Split";
-      case OpCode_Match:   return "Match";
+
+      // Chars-Box (CBox) contents.
+      case OpCode_Chars:   return "Chars";
+      case OpCode_EscCh:   return "Esc";
+      case OpCode_Class:   return "Class";
+
+      // Common to Program and CBox
+      case OpCode_Null:    return "Null ";   // Denotes a free space.
+      case OpCode_Match:   return "Match";   // Terminates program or CBox.
+
       default:             return "unknown opcode";
    }
 }
@@ -113,42 +119,46 @@ PRIVATE void printCharBox(S_CharsBox const *cb, S_RepeatSpec const *rpts)
       if(lst->opcode == OpCode_Match)
       {
          if(cb->eatUntilMatch == TRUE)
-            { dbgPrint(" <<"); }
+            { dbgPrint(" (<"); }
 
          dbgPrint(" <end>\r\n");
       }
       else
-         { dbgPrint("%d: %s ", idx, opcodeNames(lst->opcode)); }
+      {
+         dbgPrint("%d: %s ", idx, opcodeNames(lst->opcode));
 
-      // If this char-list opens a subgroup then print '(' to the left of the chars-list .
-      if(cb->opensGroup == TRUE && lst->opcode != OpCode_Match)   // But don't print bracket for 'Match' terminator. It's confusing.
-         dbgPrint("(");
+         // If this char-list opens a subgroup then print '(' to the left of the chars-list .
+         if(cb->opensGroup == TRUE && lst->opcode != OpCode_Match)   // But don't print bracket for 'Match' terminator. It's confusing.
+            dbgPrint("(");
 
-      switch(lst->opcode) {
-         case OpCode_Chars:
-            numChars = MinU8(lst->payload.chars.len, _PrintBufSize-1);
-            memcpy(buf, lst->payload.chars.start, numChars);
-            buf[numChars] = '\0';
-            dbgPrint("\"%s\"", buf);
-            break;
+         switch(lst->opcode) {
+            case OpCode_Chars:
+               numChars = MinU8(lst->payload.chars.len, _PrintBufSize-1);
+               memcpy(buf, lst->payload.chars.start, numChars);
+               buf[numChars] = '\0';
+               dbgPrint("\"%s\"", buf);
+               break;
 
-         case OpCode_EscCh:
-            dbgPrint("\"%s\"", printsEscCh(lst->payload.esc.ch));
-            break;
+            case OpCode_EscCh:
+               dbgPrint("\"%s\"", printsEscCh(lst->payload.esc.ch));
+               break;
 
-         case OpCode_Class:
-            C8bag_List(listClass, lst->payload.charClass);
-            dbgPrint("[%s]", listClass);
-            break;
+            case OpCode_Class:
+               C8bag_List(listClass, lst->payload.charClass);
+               dbgPrint("[%s]", listClass);
+               break;
+
+         }
+         if(lst->opcode != OpCode_Null && lst->opcode != OpCode_Match)
+            { printAnyRepeats(rpts); }
+
+         // If this char-list closes a subgroup then print ')' to the right of the chars-list .
+         if(cb->closesGroup == TRUE && lst->opcode != OpCode_Match)  // But don't print bracket for 'Match' terminator. It's confusing.
+            dbgPrint(")");
+
+         dbgPrint("  ");
 
       }
-      if(lst->opcode != OpCode_Null && lst->opcode != OpCode_Match)
-         { printAnyRepeats(rpts); }
-
-      // If this char-list closes a subgroup then print ')' to the right of the chars-list .
-      if(cb->closesGroup == TRUE && lst->opcode != OpCode_Match)  // But don't print bracket for 'Match' terminator. It's confusing.
-         dbgPrint(")");
-
       if(lst->opcode == OpCode_Match)
          { break; }
    }
