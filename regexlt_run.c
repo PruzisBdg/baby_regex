@@ -349,9 +349,15 @@ PRIVATE C8 const * printRegexSample(S_CharsBox const *cb)
 
 PRIVATE C8 const * prntRpts( S_RepeatSpec const *r, T_RepeatCnt cnt )
 {
-   static buf[20];
+   static C8 buf[20];
+
    if(r->valid)
-      { sprintf(buf, "{%d,%d}%d", r->min, r->max, cnt); }
+      if(r->min == r->max)
+         { sprintf(buf, "{%d}%d", r->min, cnt); }
+      else if(r->max == _Repeats_Unlimited)
+         { sprintf(buf, "{%d,*}%d", r->min, cnt); }
+      else
+         { sprintf(buf, "{%d,%d}%d", r->min, r->max, cnt); }
    else
       { sprintf(buf, "{_}%d", cnt); }
    return buf;
@@ -381,14 +387,17 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
    addThread(curr,                     // to the current thread list
       newThread(  0,                   // PC starts at zero
                   str,                 // From start of the input string
-                  1,                   // Loop/repeat count starts at 1 (current instruction will run at least once)
+                  0,                   // Loop/repeat count starts at 0. WIll increment if JMP back to reuse previous Chars-Box.
                   NULL,
                   &matchesCfg0,        // Accumulate any matches here.
                   _EatMismatches));    // Eat leading mismatches unless told otherwise.
 
    RegexLT_T_MatchIdx matchStart = 0;  // Global match marker starts at start of input string.
 
-   dbgPrint("------ Trace:   '(<' = eat-leading,   '==' = 'matched char'\r\n\r\n");
+   dbgPrint("------ Trace:\r\n"
+            "   '(<' eat-leading,   '==' 'matched char' ' !=' no match\r\n"
+            "   '+>' append to current list   '-->' append to next list\r\n"
+            "   '-> _' = nothing (dead) \r\n\r\n");
    C8 bufL[20], bufR[20];
 
    /* Run 'prog', which will create and terminate threads. Do until we either reach 'Match'
@@ -416,8 +425,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
       BOOL addL, addR; U8 cput;
 
       if(c % 10 == 0) {
-         dbgPrint("   PC CBox/Op      inStr    [thrd -> l(@pc), r(@pc)]:\r\n"
-                  "-----------------------------------------------------\r\n"); }
+         dbgPrint("   PC CBox/Op      inStr    [thrd -> l(@pc:), r(@pc:) {rpt-cnt}]:\r\n"
+                  "-----------------------------------------------------------------\r\n"); }
 
       for(ti = 0; ti < curr->put; ti++)                                       // For each active thread.
       {
@@ -499,7 +508,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                                        matchedMinimal ? _StopAtMismatch : _EatMismatches));
                      }
                   }                              // --- else continue below.
-                                                                     dbgPrint("   %d: %s %s  %s    [%d->%s,%s]*   \t{}%d\r\n",
+                                                                     dbgPrint("   %d: %s %s  %s    [%d --> %s,%s {%d}]\r\n",
                                                                         pc,
                                                                         printRegexSample(&ip->charBox),
                                                                         addL ? "==" : "(<",
@@ -542,8 +551,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      {
                         newT->subgroupStart = sp;                                // Mark the start -> will be copied into the fresh thread
                      }
-                                                                     dbgPrint("   %d: %s ==  %s    [%d->%d(%d:)]* \t\t\r\n",
-                                                                        pc, printRegexSample(&ip->charBox), printTriad(cs), ti, next->put, pc+1);
+                                                                     dbgPrint("   %d: %s ==  %s    [%d --> %d(%d:) {%d}]\r\n",
+                                                                        pc, printRegexSample(&ip->charBox), printTriad(cs), ti, next->put, pc+1, loopCnt);
                      addThread(next, newT);                                      // Add thread we made to 'next'
                   }
                   else                                                           // Source chars did not match? OR input string too long?
@@ -552,7 +561,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         rtn = E_RegexRtn_BadInput;                               // then we are done running the program
                         goto CleanupAndRtn; }
                      else {                                                      // else we are done just with this thread...Do not renew it in 'next'
-                                                                     dbgPrint("   %d: %s !=  %s    [%d->_] \t\t\t\r\n",
+                                                                     dbgPrint("   %d: %s !=  %s    [%d -> _] \t\t\t\r\n",
                                                                         pc, printRegexSample(&ip->charBox), printTriad(cs), ti);
                      }
                   }
@@ -597,7 +606,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   }
                   else
                   {
-                     dbgPrint("   %d: match: & \'%c%c%c\' -- interim, (threads still open %d)\r\n",
+                     dbgPrint("   %d: match: & \'%c%c%c\' -- interim, (threads still open. next.put = %d)\r\n",
                                  pc,
                                  *cs,
                                  *(cs+1) != '\0' ? *(cs+1) : ' ',
@@ -611,7 +620,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
             case OpCode_Jmp:                          // --- Jump
                dfltMatchCfg.clone = FALSE;
-                                                                     dbgPrint("   %d: jmp: %d     @ %s    [%d->%d(%d:)]    \t\t%s%s\r\n",
+                                                                     dbgPrint("   %d: jmp: %d     @ %s    [%d +> %d(%d:)]    \t\t%s%s\r\n",
                                                                               pc, ip->left,
                                                                               printTriad(sp),
                                                                               ti, curr->put, ip->left,
@@ -667,7 +676,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   addThread(curr, newThread(ip->right, sp, 0, gs, &dfltMatchCfg, thrd->eatMismatches));
                   addR = TRUE;
                }  // then will now also attempt to match the next text block.
-                                                                     dbgPrint("   %d: split(%d %d) @ %s    [%d->%s,%s]   \t\t%s\r\n",
+                                                                     dbgPrint("   %d: split(%d %d) @ %s    [%d +> %s,%s]   \t\t%s\r\n",
                                                                         pc, ip->left, ip->right,
                                                                         printTriad(sp),
                                                                         ti,

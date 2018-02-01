@@ -87,7 +87,7 @@ PRIVATE void printAnyRepeats(S_RepeatSpec const *rpts)
          if(rpts->min == rpts->max && rpts->min > 0)
             { dbgPrint(" {%d}", rpts->min); }
          else if(rpts->min > rpts->max)
-            { dbgPrint(" {%d,%d BAD!!", rpts->min, rpts->max); }
+            { dbgPrint(" {%d,%d BAD!!}", rpts->min, rpts->max); }
          else if(rpts->max == _Repeats_Unlimited)
             { dbgPrint(" {%d,*}", rpts->min); }
          else if(1)
