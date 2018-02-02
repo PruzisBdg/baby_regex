@@ -453,6 +453,8 @@ PRIVATE S_CharsBox * lookaheadFor_GroupClose(S_CharsBox *cb, C8 const *rs)
    return cb;
 }
 
+#if 0
+
 /* ---------------------------- rightOperator -----------------------------
 
    Given a regex string 'rgx', return the char of the controlling operator for rgx[0]
@@ -570,6 +572,8 @@ PUBLIC C8 rightOperator(C8 const *rgx)
          : '$';      // else 'free' '$' <> EOS.
 }
 
+#endif
+
 /* ----------------------------- regexlt_compileRegex ---------------------------------
 
    Compile 'regexStr' into a 'prog'. The program consists of instructions. Each
@@ -578,8 +582,8 @@ PUBLIC C8 rightOperator(C8 const *rgx)
 */
 PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
 {
-   C8 const *rs = regexStr;
-   C8 const *ps;
+   C8 const *rgxP = regexStr;          // From the start of the regex.
+   C8 const *segStart;                 // Pins the start of a character segment.
    BOOL forked = FALSE;                // Until we meet and alternate '|'
    U8 boxesToRight;
    BOOL ate1st = FALSE;
@@ -599,18 +603,17 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
 
    while(1)                            // Until end-of-regex or there's a compile error.
    {
-      if(!isprint(*rs) && *rs != '\0')                   // Regex string contains a non-printable?
+      if(!isprint(*rgxP) && *rgxP != '\0')                   // Regex string contains a non-printable?
       {
          return FALSE;                                   // Fail! Regex have only printable chars
       }
       else                                               // else it's a char which is legal somewhere in a regex. OR end-of-string
       {
-         switch(*rs)                   // --- Wot is it?
+         switch(*rgxP)                   // --- Wot is it?
          {
             case '\0':                                // --- End of regex
                if(forked == TRUE)                        // But were waiting for char-right of an alternate?
                {
-printf("Barfed here\r\n");
                   return FALSE;                          // So parse fail
                }
                else                                      // else compile is complete
@@ -624,23 +627,23 @@ printf("Barfed here\r\n");
             case '?':                                 // --- Zero or one
                addSplit(prog, +1, +2);                   // Either try next or skip it..
                attachCharBox(prog,                       // This is 'next'
-                  lookaheadFor_GroupClose(&cb, rs));     // If ')' after the '?' then this CharBox is/ends a subgroup. Close the subgroup.
-               rs++;
+                  lookaheadFor_GroupClose(&cb, rgxP));     // If ')' after the '?' then this CharBox is/ends a subgroup. Close the subgroup.
+               rgxP++;
                break;
 
             case '*':                                 // --- Zero or more
                addSplit(prog, +1, +3);                   // Either try next repeatedly or skip.
                attachCharBox(prog,                       // This is 'next'.
-                  lookaheadFor_GroupClose(&cb, rs));     // If ')' after the '*' then close current subgroup at the CharBox.
+                  lookaheadFor_GroupClose(&cb, rgxP));     // If ')' after the '*' then close current subgroup at the CharBox.
                addJump(prog, -2);                        // then back to retry or move on.
-               rs++;
+               rgxP++;
                break;
 
             case '+':                                 // --- One or more
                attachCharBox(prog,                       // Always try this once...
-                  lookaheadFor_GroupClose(&cb, rs));     // If ')' after the '+' then close current subgroup at the CharBox.
+                  lookaheadFor_GroupClose(&cb, rgxP));     // If ')' after the '+' then close current subgroup at the CharBox.
                addSplit(prog, -1, +1);                   // then either move on or retry.
-               rs++;
+               rgxP++;
                break;
 
             case '|':                                 // --- Alternates
@@ -656,11 +659,11 @@ printf("Barfed here\r\n");
                attachCharBox(prog, &cb);                 // Attach fork-left ... which we parsed before reaching '|'. Goto next free bytecode slot.
                forked = TRUE;                            // Mark that we forked; so we know when we finally get code-right.
                boxesToRight = 0;                         // Will count CharBoxes to right of '|' which are arguments or that '|'. So can JMP past them.
-               rs++;                                     // Goto next char past '|'.
+               rgxP++;                                     // Goto next char past '|'.
                break;
 
             case '{':                                 // --- Opens a repeat specifier e.g {2,5} (match preceding 2 to 5 times}
-               if(parseRepeat(&rpt, &rs) == E_Fail)      // Was not any of e.g {3}, {3,} or {3,5}?
+               if(parseRepeat(&rpt, &rgxP) == E_Fail)      // Was not any of e.g {3}, {3,} or {3,5}?
                {
                   return FALSE;                          // then regex is malformed.
                }
@@ -668,13 +671,13 @@ printf("Barfed here\r\n");
                {
                   addSplit_wRepeats(prog, +1, +3, &rpt); // Write instructions as for 'zero-or-more', but with repeat specifiers non-zero.
                   attachCharBox(prog,                    // This is 'next'.
-                     lookaheadFor_GroupClose(&cb, rs));
+                     lookaheadFor_GroupClose(&cb, rgxP));
                   addJump(prog, -2);                     // then back to retry or move on.
                   break;
                }
 
             case ')':                                 // --- Closing a subgroup (after an operator, since it wasn't captured by fillCharBox(), below)
-               rs++;                                     // then the ')' is superfluous, since the preceding operator implicitly closed the subgroup
+               rgxP++;                                     // then the ')' is superfluous, since the preceding operator implicitly closed the subgroup
                break;                                    // So just boof past the ')'.
 
             default:                                  // --- (else) a regex literal char
@@ -696,17 +699,16 @@ printf("Barfed here\r\n");
                cb = emptyCharsBox;                       // Make a new S_CharsBox for fillCharBox() to fill.
                cb.buf = &prog->chars.buf[prog->chars.put];  // Give it the next free space from what was malloced for S_CharsBox[]
 
-               ps = rs;
-               if( fillCharBox(&prog->classes, &cb, &rs) == FALSE)   // Got (contiguous) chars into 'cb'?
+               segStart = rgxP;
+               if( fillCharBox(&prog->classes, &cb, &rgxP) == FALSE)   // Got (contiguous) chars into 'cb'?
                {
                   return FALSE;                          // No, parse error.. Fail
                }
                else                                      // else 'cb' has the chars (and 'rs' is advanced to next un-read input)
                {
                   gotCharBox = TRUE;                     // Mark that there's an assembled Box.
-//printf("Got CharBox %c %c %d\r\n", *ps, *rs, *rs);
                   if(firstOp == 0)
-                     { firstOp = rightOperator(ps); }
+                     { firstOp = rightOperator(segStart); }
 
                   /* If 1st operator is '|' (alternation) then, because '|' is greedy (left and right), we must
                      dump mismatches to the 1st of multiple CharBox to the left of '|' until we match all
@@ -726,9 +728,9 @@ printf("Barfed here\r\n");
                                           '.*def'  vs 'abcdefg'
                      Here the wildcard matches 'abc' and the match starts at 'a', not 'd'.
                   */
-                  if( (prog->instrs.put == 0 && *ps != '.') ||    // 1st char AND it's not a wildcard? OR
+                  if( (prog->instrs.put == 0 && *segStart != '.') ||    // 1st char AND it's not a wildcard? OR
                       (
-                        rightOperator(ps) == '|' &&               // operator to right is alternation? AND...
+                        rightOperator(segStart) == '|' &&               // operator to right is alternation? AND...
                         firstOp == '|' &&                         // ... this '|' was not preceded by any different operator? AND
                         ate1st == FALSE ))                        // this is 1st char block to left of 1st '|'? (else 'ate1st' would be TRUE)
                      {
@@ -747,8 +749,8 @@ printf("Barfed here\r\n");
                         addNOP(prog);                             // and reserve a slot for the JMP. To be inserted later when we figure how far right the '|' extends.
                      }
 
-                     C8 rop = rightOperator(ps);
-//printf("rem %s rop %c\r\n", ps, rop);
+                     C8 rop = rightOperator(segStart);
+
                      if( rop == '$' )
                      {
                         addJumpAbs(prog, jmpMark, jmpMark + boxesToRight + 2 );
@@ -762,14 +764,14 @@ printf("Barfed here\r\n");
 
                   if(cb.opensGroup)                               // This CharBox opens a subgroup?
                   {
-                     if(rightOperator(rs) == '|')                 // Next operator (somewhere to the right) is '|'?
+                     if(rightOperator(rgxP) == '|')                 // Next operator (somewhere to the right) is '|'?
                      {
                         nopMark = prog->instrs.put;               // then mark this spot
                         addNOP(prog);                             // and reserve a slot ofr the 'SPlit' which be inserted when we reach the '|'.
                      }
                   }
 
-                  if(*rs == '(')                                  // Next char opens a new subgroup?
+                  if(*rgxP == '(')                                  // Next char opens a new subgroup?
                   {
                      attachCharBox(prog, &cb);                    // then attach the existing newly-made chars-list now; don't have to wait for a post-operator.
                   }

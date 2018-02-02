@@ -169,6 +169,8 @@ PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
 
 PUBLIC void regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb);
 
+PUBLIC C8 rightOperator(C8 const *rgx);
+
 #endif // REGEXLT_PRIVATE_H
 
 // ---------------------------------------- eof ------------------------------------------
