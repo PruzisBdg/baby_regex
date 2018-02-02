@@ -123,6 +123,10 @@ PRIVATE S_Test const tests[] = {
    { "34+",          "2344456344448123445",  E_RegexRtn_Match,    {1, {{15,3}}}, _RegexLT_Flags_MatchLast      },
    { matchPhone1,    "414 777 9214",         E_RegexRtn_Match,    {1, {{0,12}}}  },
    { matchPhone1,    "414-777-9214",         E_RegexRtn_Match,    {1, {{0,12}}}  },
+   { matchPhone1,    "tel 414-777-9214 nn",  E_RegexRtn_Match,    {1, {{4,12}}}  },
+   { "\\(\\d{3}\\)[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,14}}}  },
+   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
+   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "414-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,12}}}  },
 };
 
 #else
@@ -137,8 +141,11 @@ PRIVATE RegexLT_S_Cfg cfg = {
 };
 
 PRIVATE S_Test const tests[] = {
-//   { "\\(?\\d{3}[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
-   { "a4{3}",    "a444",      E_RegexRtn_Match,    {1, {{0,12}}}  },
+   //{ "(\\d{3})|(\\(\\d{3}\\))[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
+   //{ "(3)|(\\d{3})",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
+//   { "(3)|(4)",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
+
+   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "a414-777-9214 nn",  E_RegexRtn_Match,    {1, {{4,12}}}  },
 };
 
 #endif
@@ -204,6 +211,7 @@ PRIVATE S_TestRightOperator const rightOpTests[] = {
    { "(a)",    '$' },
 
    { "(\\d)",    '$' },
+   { "\\(\\d{3}", 'E' },
 
    // Nesting
    { "(ab(cd))", '$' },

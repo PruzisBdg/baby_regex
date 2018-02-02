@@ -95,6 +95,9 @@ enum {
    OpCode_Split,              // Split into 2 simultaneous threads of execution.
    OpCode_Match } eOpCode;    // Terminates both character box list and compiled regex instructions list.
 
+static inline BOOL opCode_HoldsChars(T_OpCode op)
+   { return op == OpCode_Chars || op == OpCode_EscCh || op == OpCode_Class; }
+
 // A segment of chars in the source regex.
 typedef U8 T_CharSegmentLen;
 typedef struct {C8 const *start; T_CharSegmentLen len; } S_CharSegment;
