@@ -603,7 +603,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
 
    while(1)                            // Until end-of-regex or there's a compile error.
    {
-      if(!isprint(*rgxP) && *rgxP != '\0')                   // Regex string contains a non-printable?
+      if(!isprint(*rgxP) && *rgxP != '\0')               // Regex string contains a non-printable?
       {
          return FALSE;                                   // Fail! Regex have only printable chars
       }
@@ -627,21 +627,21 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
             case '?':                                 // --- Zero or one
                addSplit(prog, +1, +2);                   // Either try next or skip it..
                attachCharBox(prog,                       // This is 'next'
-                  lookaheadFor_GroupClose(&cb, rgxP));     // If ')' after the '?' then this CharBox is/ends a subgroup. Close the subgroup.
+                  lookaheadFor_GroupClose(&cb, rgxP));   // If ')' after the '?' then this CharBox is/ends a subgroup. Close the subgroup.
                rgxP++;
                break;
 
             case '*':                                 // --- Zero or more
                addSplit(prog, +1, +3);                   // Either try next repeatedly or skip.
                attachCharBox(prog,                       // This is 'next'.
-                  lookaheadFor_GroupClose(&cb, rgxP));     // If ')' after the '*' then close current subgroup at the CharBox.
+                  lookaheadFor_GroupClose(&cb, rgxP));   // If ')' after the '*' then close current subgroup at the CharBox.
                addJump(prog, -2);                        // then back to retry or move on.
                rgxP++;
                break;
 
             case '+':                                 // --- One or more
                attachCharBox(prog,                       // Always try this once...
-                  lookaheadFor_GroupClose(&cb, rgxP));     // If ')' after the '+' then close current subgroup at the CharBox.
+                  lookaheadFor_GroupClose(&cb, rgxP));   // If ')' after the '+' then close current subgroup at the CharBox.
                addSplit(prog, -1, +1);                   // then either move on or retry.
                rgxP++;
                break;
@@ -659,11 +659,11 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                attachCharBox(prog, &cb);                 // Attach fork-left ... which we parsed before reaching '|'. Goto next free bytecode slot.
                forked = TRUE;                            // Mark that we forked; so we know when we finally get code-right.
                boxesToRight = 0;                         // Will count CharBoxes to right of '|' which are arguments or that '|'. So can JMP past them.
-               rgxP++;                                     // Goto next char past '|'.
+               rgxP++;                                   // Goto next char past '|'.
                break;
 
             case '{':                                 // --- Opens a repeat specifier e.g {2,5} (match preceding 2 to 5 times}
-               if(parseRepeat(&rpt, &rgxP) == E_Fail)      // Was not any of e.g {3}, {3,} or {3,5}?
+               if(parseRepeat(&rpt, &rgxP) == E_Fail)    // Was not any of e.g {3}, {3,} or {3,5}?
                {
                   return FALSE;                          // then regex is malformed.
                }
@@ -677,7 +677,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                }
 
             case ')':                                 // --- Closing a subgroup (after an operator, since it wasn't captured by fillCharBox(), below)
-               rgxP++;                                     // then the ')' is superfluous, since the preceding operator implicitly closed the subgroup
+               rgxP++;                                   // then the ')' is superfluous, since the preceding operator implicitly closed the subgroup
                break;                                    // So just boof past the ')'.
 
             default:                                  // --- (else) a regex literal char
@@ -699,7 +699,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                cb = emptyCharsBox;                       // Make a new S_CharsBox for fillCharBox() to fill.
                cb.buf = &prog->chars.buf[prog->chars.put];  // Give it the next free space from what was malloced for S_CharsBox[]
 
-               segStart = rgxP;
+               segStart = rgxP;                          // Mark start of this segment; we will
                if( fillCharBox(&prog->classes, &cb, &rgxP) == FALSE)   // Got (contiguous) chars into 'cb'?
                {
                   return FALSE;                          // No, parse error.. Fail
@@ -730,7 +730,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                   */
                   if( (prog->instrs.put == 0 && *segStart != '.') ||    // 1st char AND it's not a wildcard? OR
                       (
-                        rightOperator(segStart) == '|' &&               // operator to right is alternation? AND...
+                        rightOperator(segStart) == '|' &&         // operator to right is alternation? AND...
                         firstOp == '|' &&                         // ... this '|' was not preceded by any different operator? AND
                         ate1st == FALSE ))                        // this is 1st char block to left of 1st '|'? (else 'ate1st' would be TRUE)
                      {
@@ -749,29 +749,27 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                         addNOP(prog);                             // and reserve a slot for the JMP. To be inserted later when we figure how far right the '|' extends.
                      }
 
-                     C8 rop = rightOperator(segStart);
-
-                     if( rop == '$' )
-                     {
+                     if( rightOperator(segStart) == '$' )         // Right fork extends to end of input string?
+                     {                                            // then jump past the 1st JMP and the right-fork Char-Box after it (+2)
                         addJumpAbs(prog, jmpMark, jmpMark + boxesToRight + 2 );
-                        forked = FALSE;
+                        forked = FALSE;                           // and the fork is done.
                      }
-                     else
-                     {
-                        boxesToRight++;
+                     else                                         // else right fork does NOT extend to end of input.
+                     {                                            // then, because '|' is greedy, we need to keep adding content...
+                        boxesToRight++;                           // until end-of-input or another '|'.
                      }
                   }
 
                   if(cb.opensGroup)                               // This CharBox opens a subgroup?
                   {
-                     if(rightOperator(rgxP) == '|')                 // Next operator (somewhere to the right) is '|'?
+                     if(rightOperator(rgxP) == '|')               // Next operator (somewhere to the right) is '|'?
                      {
                         nopMark = prog->instrs.put;               // then mark this spot
                         addNOP(prog);                             // and reserve a slot ofr the 'SPlit' which be inserted when we reach the '|'.
                      }
                   }
 
-                  if(*rgxP == '(')                                  // Next char opens a new subgroup?
+                  if(*rgxP == '(')                                // Next char opens a new subgroup?
                   {
                      attachCharBox(prog, &cb);                    // then attach the existing newly-made chars-list now; don't have to wait for a post-operator.
                   }
