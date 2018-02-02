@@ -465,6 +465,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
    C8 const *rgxP = regexStr;          // From the start of the regex.
    C8 const *segStart;                 // Pins the start of a character segment.
    BOOL forked = FALSE;                // Until we meet and alternate '|'
+   BOOL leftZero = FALSE;
    U8 boxesToRight;
    BOOL ate1st = FALSE;
    BOOL gotCharBox = FALSE;
@@ -508,6 +509,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                addSplit(prog, +1, +2);                   // Either try next or skip it..
                attachCharBox(prog,                       // This is 'next'
                   lookaheadFor_GroupClose(&cb, rgxP));   // If ')' after the '?' then this CharBox is/ends a subgroup. Close the subgroup.
+               leftZero = TRUE;
                rgxP++;
                break;
 
@@ -516,6 +518,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                attachCharBox(prog,                       // This is 'next'.
                   lookaheadFor_GroupClose(&cb, rgxP));   // If ')' after the '*' then close current subgroup at the CharBox.
                addJump(prog, -2);                        // then back to retry or move on.
+               //leftZero = TRUE;
                rgxP++;
                break;
 
@@ -638,6 +641,12 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                      {                                            // then, because '|' is greedy, we need to keep adding content...
                         boxesToRight++;                           // until end-of-input or another '|'.
                      }
+                  }
+
+                  if(leftZero == TRUE)
+                  {
+                     leftZero = FALSE;
+                     cb.eatUntilMatch = TRUE;
                   }
 
                   if(cb.opensGroup)                               // This CharBox opens a subgroup?
