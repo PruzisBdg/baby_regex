@@ -349,7 +349,7 @@ PRIVATE C8 const * printRegexSample(S_CharsBox const *cb)
 
 PRIVATE C8 const * prntRpts( S_RepeatSpec const *r, T_RepeatCnt cnt )
 {
-   static buf[20];
+   static C8 buf[20];
    if(r->valid)
       { sprintf(buf, "{%d,%d}%d", r->min, r->max, cnt); }
    else
