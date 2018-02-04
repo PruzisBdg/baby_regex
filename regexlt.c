@@ -203,11 +203,15 @@ PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_
                      }
                      else if( (*ml = newMatchList(stats.subExprs)) == NULL) {
                         rtn = E_RegexRtn_OutOfMemory;
-                        goto FreeAndQuit; }                   // Big enuf to hold the global match plus sub-groups.
+                        goto FreeAndQuit; }                 // Big enuf to hold the global match plus sub-groups.
                   }
 
+               /* Run the compiled program 'prog.instrs' on 'srcStr' with matches written to 'ml', if this is supplied.
+                  Any thread may have up to a global match plus a match for each sub-expression. So reserve 'subExprs'+1.
+               */
                printProgram(&prog);                         // Run 'prog' on 'srcStr'; matches into 'ml'.
-               rtn = runCompiledRegex(&prog.instrs, srcStr, ml, stats.subExprs, flags);
+               U8  matchesPerThread = stats.subExprs+1;
+               rtn = runCompiledRegex( &prog.instrs, srcStr, ml, matchesPerThread, flags);
             }
          }
          // Done. Free() memory we malloced(), excepting the matches. These are for the caller.

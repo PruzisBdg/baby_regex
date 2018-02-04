@@ -143,14 +143,23 @@ PRIVATE BOOL recordMatch(RegexLT_S_MatchList *ml, C8 const *at, RegexLT_T_MatchL
 
 /* ---------------------- Regex engine threads support --------------------------------- */
 
-#define _MatchBufLen 5
-typedef struct { RegexLT_T_MatchIdx idx; RegexLT_T_MatchLen len; } S_Match;
-typedef struct { S_Match *ms; U8 put; BOOL isOwner; } S_MatchList;
+//#define _MatchBufLen 5
+typedef struct {
+   RegexLT_T_MatchIdx start;     // 1st char of matched segment, relative to start of input string
+   RegexLT_T_MatchLen len;       // This many bytes long.
+} S_Match;
+
+typedef struct {
+   S_Match  *ms;                 // To a buffer of matches.
+   U8       bufSize,             // Buffer is this long
+            put;                 // Next free, from zero upwards.
+   BOOL     isOwner;             // This 'S_MatchList' malloced the ms[]; if FALSE then it is referencing ms[]...
+} S_MatchList;                   // ...which were malloced by another 'S_MatchList'.
 
 
 PRIVATE BOOL copyInMatch(RegexLT_S_MatchList *ml, S_Match const *m, C8 const *str)
 {
-   return recordMatch(ml, str+m->idx, m->idx, m->len, _ReplaceShorter);
+   return recordMatch(ml, str+m->start, m->start, m->len, _ReplaceShorter);
 }
 
 typedef struct {
@@ -160,7 +169,7 @@ typedef struct {
     C8 const   *subgroupStart;   // If a subgroup was opened in this thread, then this is the 1st char of the subgroup.
     S_MatchList matches;         // Matches which this thread has found - so far.
     BOOL        eatMismatches;   // Eat (leading) mismatches), at the start of the regex
-                                 // Flag is defeated at the 1st match in a thread. .Avoids thread blowup with 'A+..' which is implicitly '.*A+...' and just explodes.
+                                 // Flag is defeated at the 1st match in a thread. Avoids thread blowup with 'A+..' which is implicitly '.*A+...' and just explodes.
 } S_Thread;
 
 #define _EatMismatches   TRUE
@@ -179,14 +188,16 @@ typedef struct {
 
 PRIVATE void addMatch(S_Thread *t, C8 const *inStr, C8 const *start, C8 const *end)
 {
-   if(t->matches.put < _MatchBufLen-1) {
+   if(t->matches.put < t->matches.bufSize) {
 
       S_Match *m = &t->matches.ms[t->matches.put];
 
       if(start >= inStr && end >= start) {
-         m->idx = ClipU32toU16(start - inStr);
+         m->start = ClipU32toU16(start - inStr);
          m->len = ClipU32toU16(end - start + 1);
          t->matches.put++; }}
+   else
+      { printf("\r\n -------------- No room for match %c-%c\r\n", *start, *end); }
 }
 
 /* --------------------------- threadList -----------------------------------------
@@ -267,7 +278,11 @@ PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, U8 cnt, C8 const *grou
    {
       t.matches.put = 0;                     // then match list for this thread starts empty
                                              // and malloc() 'newBufSize' slots for this list
-      if( (t.matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) != NULL)  { t.matches.isOwner = TRUE; }
+      if( (t.matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) != NULL)
+      {
+         t.matches.bufSize = mcf->newBufSize;
+         t.matches.isOwner = TRUE;
+      }
    }
    else                                      // else there's and existing match list to clone or reference.
    {
@@ -276,7 +291,9 @@ PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, U8 cnt, C8 const *grou
       if(mcf->clone) {                       // Are we cloning it?
                                              // then malloc() 'newBufSize'  fresh slots
          if( (t.matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) != NULL) {
+            t.matches.bufSize = mcf->newBufSize;
             t.matches.isOwner = TRUE;
+
             if(mcf->lst->put > 0) {          // there's are matches in the existing list?
                                              // then copy them into the new list we just made.
                memcpy(t.matches.ms, mcf->lst->ms, mcf->lst->put * sizeof(S_Match)); }}
@@ -302,11 +319,16 @@ PRIVATE void clearList(S_ThreadList *l)
    U8 c;
    for(c = 0; c < l->put; c++)               // For each thread...
    {
-      if(l->ts[c].matches.isOwner == TRUE)   // This thread malloced the matches ms[]?
+      S_MatchList *m = &l->ts[c].matches;
+
+      if(m->isOwner == TRUE)                 // This thread malloced the matches ms[]?
       {
-         safeFree(l->ts[c].matches.ms);      // then (this thread) free()s it.
-         l->ts[c].matches.ms = NULL;         // and null ptr cuz memory is gone.
+         safeFree(m->ms);                    // then (this thread) free()s it.
+         m->ms = NULL;                       // and null ptr cuz memory is gone.
       }
+      m->bufSize = 0;                        // Park 'bufSize', 'put' & 'isOwner' tidy.
+      m->put = 0;
+      m->isOwner = FALSE;
    }
    // Reset the 'put' ptr clears the thread list itself; we don't bother to zero the actual Thread contents.
    l->put = 0;
@@ -444,10 +466,9 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
    do {
       T_InstrIdx pc;
       S_Instr const *ip;
-      C8 const *sp;
+      C8 const *sp;               // Advance through input string.
       C8 const *gs;
-      C8 const *cs;
-      RegexLT_T_MatchIdx m0;
+      C8 const *cBoxStart;          // Start of current Char-Box (while 'strP' may be advanced past Box)
       T_RepeatCnt loopCnt = 0;
 
       ThreadListLen ti;
@@ -477,7 +498,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
          S_ThrdMatchCfg dfltMatchCfg = {
             .lst = &thrd->matches, .clone = TRUE, .newBufSize = maxMatches };
 
-         cs = sp;
+         cBoxStart = sp;
 
          switch(ip->opcode )                          // Opcode is?...
          {
@@ -488,8 +509,6 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
             case OpCode_CharBox:                      // --- A list of Character(s)
                if(ip->charBox.eatUntilMatch && thrd->eatMismatches)              // Have not yet matched input against 1st char-group of regex?
                {                                                                 // then advance thru input string until we find 1st match
-                  m0 = sp - str;                                                 // Before trying match, mark input ptr.
-
                   addL = FALSE; addR = FALSE; cput = next->put;
 
                   if( matchCharsList(ip->charBox.buf, &sp, mustEnd) == TRUE)     // Matched current CharBox?...
@@ -501,15 +520,15 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         Char-Box so a subsequent mismatch should terminate this thread => '_StopAtMismatch'.
                      */
                      newT = newThread(pc+1, sp, loopCnt, gs, &dfltMatchCfg, _StopAtMismatch);
-                     addMatch(newT, str, cs, cs);
-dbgPrint("                       matchLst1 ---------- cs %c sp %c ti %d %d\r\n", *cs, *sp, ti, m0);
+                     addMatch(newT, str, cBoxStart, cBoxStart);
+//dbgPrint("                       matchLst1 ---------- cs %c sp %c ti %d %d\r\n", *cs, *sp, ti, m0);
 
                      if(ip->closesGroup)                                         // This chars-list closed a subgroup?
                      {
                         if(ip->opensGroup)                                       // and this chars-list also opened a subgroup
                         {
-                           newT->subgroupStart = cs;
-                           addMatch(newT, str, cs, sp-1);
+                           newT->subgroupStart = cBoxStart;
+                           addMatch(newT, str, cBoxStart, sp-1);
                         }
                      }
                      else if(ip->opensGroup && newT->subgroupStart == NULL)      // else this path opens a subgroup now?
@@ -518,12 +537,12 @@ dbgPrint("                       matchLst1 ---------- cs %c sp %c ti %d %d\r\n",
                      }
                      addThread(next, newT);                                      // Add thread we made to 'next'
 
-                     if( *(cs+1) != '\0')                                        // Advance... there's at least one more char in the input string?
+                     if( *(cBoxStart+1) != '\0')                                        // Advance... there's at least one more char in the input string?
                      {
                         addR = TRUE;                                             // then add a new thread to 'next' applying existing CharBox start at this new char.
                         dfltMatchCfg.clone = TRUE;
                         addThread(next,
-                           newThread(pc, cs+1, loopCnt, gs, &dfltMatchCfg,
+                           newThread(pc, cBoxStart+1, loopCnt, gs, &dfltMatchCfg,
                               !matchedMinimal && prog->buf[pc+1].opcode == OpCode_CharBox
                                  ? _EatMismatches
                                  : _StopAtMismatch) );
@@ -535,11 +554,11 @@ dbgPrint("                       matchLst1 ---------- cs %c sp %c ti %d %d\r\n",
                         rtn = E_RegexRtn_BadInput;                               // then we are done running the program.
                         goto CleanupAndRtn;
                      }
-                     else if( *(cs+1) != '\0')                                   // Advance... there's at least one more char in the input string?
+                     else if( *(cBoxStart+1) != '\0')                                   // Advance... there's at least one more char in the input string?
                      {
                         addR = TRUE;                                             // then add a new thread to 'next' applying existing CharBox start at this new char.
                         addThread( next,
-                           newThread( pc, cs+1, loopCnt, gs, &dfltMatchCfg,
+                           newThread( pc, cBoxStart+1, loopCnt, gs, &dfltMatchCfg,
                                        matchedMinimal ? _StopAtMismatch : _EatMismatches));
                      }
                   }                              // --- else continue below.
@@ -547,7 +566,7 @@ dbgPrint("                       matchLst1 ---------- cs %c sp %c ti %d %d\r\n",
                                                                         pc,
                                                                         printRegexSample(&ip->charBox),
                                                                         addL ? "==" : "(<",
-                                                                        printTriad(cs),
+                                                                        printTriad(cBoxStart),
                                                                         ti,
                                                                         printEat(bufL, addL==FALSE, cput, pc+1),
                                                                         printEat(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, pc),
@@ -555,8 +574,6 @@ dbgPrint("                       matchLst1 ---------- cs %c sp %c ti %d %d\r\n",
                }
                else                                                  // else we got the 1st match (above)
                {
-                  m0 = sp - str;
-
                   if( matchCharsList(ip->charBox.buf, &sp, mustEnd) == TRUE)     // Source chars matched? ...
                   {
                                                                                  // ...(and 'sp' is advanced beyond the matched segment)
@@ -571,16 +588,16 @@ dbgPrint("                       matchLst1 ---------- cs %c sp %c ti %d %d\r\n",
 
                      if(thrd->matches.put == 0)
                      {
-                        addMatch(newT, str, cs, cs);
-dbgPrint("                       matchLst2 ---------- cs %c sp %c ti %d %d\r\n", *cs, *sp, ti, m0);
+                        addMatch(newT, str, cBoxStart, cBoxStart);
+//dbgPrint("                       matchLst2 ---------- cs %c sp %c ti %d %d\r\n", *cs, *sp, ti, m0);
                      }
 
                      if(ip->closesGroup)                                         // This chars-list closed a subgroup?
                      {
                         if(ip->opensGroup && gs == NULL)                         // and this chars-list also opened a subgroup
                         {
-                           newT->subgroupStart = cs;
-                           addMatch(newT, str, cs, sp-1);
+                           newT->subgroupStart = cBoxStart;
+                           addMatch(newT, str, cBoxStart, sp-1);
                         }
                         else if(gs != NULL)                                      // else is there's was an open subgroup on this path (which we close now)?
                         {
@@ -596,7 +613,7 @@ dbgPrint("                       matchLst2 ---------- cs %c sp %c ti %d %d\r\n",
                         newT->subgroupStart = sp;                                // Mark the start -> will be copied into the fresh thread
                      }
                                                                      dbgPrint("   %d: %s ==  %s    [%d --> %d(%d:) {%d}]\r\n",
-                                                                        pc, printRegexSample(&ip->charBox), printTriad(cs), ti, next->put, pc+1, loopCnt);
+                                                                        pc, printRegexSample(&ip->charBox), printTriad(cBoxStart), ti, next->put, pc+1, loopCnt);
                      addThread(next, newT);                                      // Add thread we made to 'next'
                   }
                   else                                                           // Source chars did not match? OR input string too long?
@@ -605,8 +622,8 @@ dbgPrint("                       matchLst2 ---------- cs %c sp %c ti %d %d\r\n",
                         rtn = E_RegexRtn_BadInput;                               // then we are done running the program
                         goto CleanupAndRtn; }
                      else {                                                      // else we are done just with this thread...Do not renew it in 'next'
-                                                                     dbgPrint("   %d: %s !=  %s    [%d -> _] \t\t\t\r\n",
-                                                                        pc, printRegexSample(&ip->charBox), printTriad(cs), ti);
+                                                                     dbgPrint("   %d: %s !=  %s    [%d ->  _] \t\t\t\r\n",
+                                                                        pc, printRegexSample(&ip->charBox), printTriad(cBoxStart), ti);
                      }
                   }
                }
@@ -624,7 +641,7 @@ dbgPrint("                       matchLst2 ---------- cs %c sp %c ti %d %d\r\n",
                {
                   ml->put = 0;                                                   // then empty this list (in case an earlier thread matched and filled it)
 
-                  thrd->matches.ms[0].len = cs - str - thrd->matches.ms[0].idx;
+                  thrd->matches.ms[0].len = cBoxStart - str - thrd->matches.ms[0].start;
 
                   U8 c;
                   for(c = 0; c < thrd->matches.put; c++)                         // Append any submatches.
@@ -649,21 +666,18 @@ dbgPrint("                       matchLst2 ---------- cs %c sp %c ti %d %d\r\n",
                   }
                   else
                   {
-                     dbgPrint("   %d: match: & \'%c%c%c\' -- interim, (threads still open. next.put = %d)\r\n",
-                                 pc,
-                                 *cs,
-                                 *(cs+1) != '\0' ? *(cs+1) : ' ',
-                                 (*(cs+1) != '\0' && *(cs+2) != '\0') ? *(cs+2) : ' ',
-                                 next->put);
+                     dbgPrint("   %d: match:     @ %s -- interim, (%d threads still open)\r\n",
+                                 pc, printTriad(cBoxStart), next->put);
                   }
-                  goto EndsCurrentStep;
+                  dbgPrint("curr put -------------- %d\r\n", curr->put);
+                  //goto EndsCurrentStep;
                }
                break;
 
 
             case OpCode_Jmp:                          // --- Jump
                dfltMatchCfg.clone = FALSE;
-                                                                     dbgPrint("   %d: jmp: %d     @ %s    [%d +> %d(%d:)]    \t\t%s%s\r\n",
+                                                                     dbgPrint("   %d: jmp: %d     @ %s    [%d +>  %d(%d:)]    \t\t%s%s\r\n",
                                                                               pc, ip->left,
                                                                               printTriad(sp),
                                                                               ti, curr->put, ip->left,
@@ -709,7 +723,7 @@ dbgPrint("                       matchLst2 ---------- cs %c sp %c ti %d %d\r\n",
                if(!ip->repeats.valid || loopCnt < ip->repeats.max)             // Unconditional? OR is conditional AND have not tried max-repeats of current chars-block?
                {
                   dfltMatchCfg.clone = FALSE;
-                  addThread(curr, newThread(ip->left, sp, loopCnt, gs, &dfltMatchCfg, thrd->eatMismatches));
+                  addThread(curr, newThread(ip->left, sp, ip->left < pc ? loopCnt+1 : loopCnt, gs, &dfltMatchCfg, thrd->eatMismatches));
                   addL = TRUE;
                }   // then this thread loops back to the current chars-block.
 
@@ -719,13 +733,14 @@ dbgPrint("                       matchLst2 ---------- cs %c sp %c ti %d %d\r\n",
                   addThread(curr, newThread(ip->right, sp, 0, gs, &dfltMatchCfg, thrd->eatMismatches));
                   addR = TRUE;
                }  // then will now also attempt to match the next text block.
-                                                                     dbgPrint("   %d: split(%d %d) @ %s    [%d +> %s,%s]   \t\t%s\r\n",
+                                                                     dbgPrint("   %d: split(%d %d) @ %s    [%d +>  %s,%s]   \t\t%s%s\r\n",
                                                                         pc, ip->left, ip->right,
                                                                         printTriad(sp),
                                                                         ti,
                                                                         printEat(bufL, addL==FALSE, cput, ip->left),
                                                                         printEat(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, ip->right),
-                                                                        prntRpts(&ip->repeats, loopCnt));
+                                                                        prntRpts(&ip->repeats, loopCnt),
+                                                                        ip->left < pc ? "++" : "");
 
                /* Same as for JMP above; if this 'Split' is followed by a 'Match', then one of the splits must
                   be a backward jump. This implies we have matched every part of the regex at least once.
@@ -741,12 +756,12 @@ EndsCurrentStep:
       /* Exhausted the current thread list. But may have queued some new threads in 'next.
          Make 'next' the new 'curr' and clean out 'next' for next go-around..
       */
-                                                                        dbgPrint("\r\nnew list: [curr.put <- next.put]: [%d %d]->[%d _]\r\n",
-                                                                                                                  curr->put, next->put, next->put);
+                                                                        dbgPrint("\r\nnew list %d: [curr.put <- next.put]: [%d %d]->[%d _]\r\n",
+                                                                                                                  c, curr->put, next->put, next->put);
       swapPtr(&curr, &next);
       clearList(next);
 
-   } while(curr->put > 0 && ++c < 100);
+   } while(curr->put > 0 && ++c < 20);
 
 
 CleanupAndRtn:
