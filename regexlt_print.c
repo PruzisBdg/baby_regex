@@ -15,7 +15,6 @@
 
 // Private to RegexLT_'.
 #define dbgPrint  regexlt_dbgPrint
-#define br        regexlt_cfg
 
 
 #define TAB 0x09
@@ -30,10 +29,8 @@ PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...)
    va_list argptr;
    va_start(argptr,fmt);
 
-   if(br->printEnable)
-   {
-      vfprintf(stdout, fmt, argptr);
-   }
+   if(regexlt_cfg->printEnable)
+      { vfprintf(stdout, fmt, argptr); }
    va_end(argptr);
 }
 
@@ -61,8 +58,10 @@ PUBLIC C8 const *opcodeNames(T_OpCode op)
    }
 }
 
-/* --------------------------------- printsEscCh -------------------------------------- */
+/* --------------------------------- printsEscCh --------------------------------------
 
+   May be whitespace or an escaped literal e.g '\['.
+*/
 PRIVATE C8 const * printsEscCh(C8 ch)
 {
    static C8 buf[2];
@@ -79,139 +78,201 @@ PRIVATE C8 const * printsEscCh(C8 ch)
          case CR:  return "\\r";
          case LF:  return "\\n";
          case TAB: return "\\t";
-         default: return "Not an escaped char";
+         default:  return "Not an escaped char";
       }
    }
 }
 
-/* ------------------------------ printAnyRepeats ------------------------------------- */
+/* ------------------------------ printAnyRepeats -------------------------------------
 
+    Print repeats-specifier 'rpts' if it is 'valid', meaning it exists.
+
+*/
 PRIVATE void printAnyRepeats(S_RepeatSpec const *rpts)
 {
    if(rpts != NULL) {
       if(rpts->valid == TRUE) {
-         if(rpts->min == rpts->max && rpts->min > 0)
+         if(rpts->min == rpts->max && rpts->min > 0)                 // min == max? i.e match exactly  -> {3}
             { dbgPrint(" {%d}", rpts->min); }
-         else if(rpts->min > rpts->max)
+         else if(rpts->min > rpts->max)                              // min > max?  -> Illegal!!
             { dbgPrint(" {%d,%d BAD!!}", rpts->min, rpts->max); }
-         else if(rpts->max == _Repeats_Unlimited)
+         else if(rpts->max == _Repeats_Unlimited)                    // No upper limit? -> at-least -> {3,*}
             { dbgPrint(" {%d,*}", rpts->min); }
-         else if(1)
-            { dbgPrint(" {%d,%d}", rpts->min, rpts->max); }
+         else
+            { dbgPrint(" {%d,%d}", rpts->min, rpts->max); }          // else a range e.g {3,6}
       }
    }
 }
 
-/* ------------------------------- printCharBox ---------------------------------------- */
+/* ------------------------------- printCharsBox ----------------------------------------
 
-
-PRIVATE void printCharBox(S_CharsBox const *cb, S_RepeatSpec const *rpts)
+   Print the one or more 'S_Chars' elements of 'cb' on one line. Each element may be a
+   segment of the regex, a single escaped char (of the regex) or a character class
+   (defined in the regex).
+*/
+PRIVATE void printCharsBox(S_CharsBox const *cb, S_RepeatSpec const *rpts)
 {
-   #define _PrintBufSize 100
-   C8          buf[_PrintBufSize];
-   C8          listClass[256];
-   U8          numChars;
    T_InstrIdx  idx;
-   S_Chars     *lst = cb->buf;
+   S_Chars     *seg = cb->segs;
 
-   for(idx = 0; lst->opcode != OpCode_Null && idx < 10; idx++, lst++)
+   for(idx = 0; seg->opcode != OpCode_Null && idx < 10; idx++, seg++)         // Until all box items, including OpCode_EndCBox, have been printed.
    {
-      if(lst->opcode == OpCode_Match)
+      if(seg->opcode == OpCode_EndCBox)                                       // End of Box?
       {
-         if(cb->eatUntilMatch == TRUE)
-            { dbgPrint(" (<"); }
+         if(cb->eatUntilMatch == TRUE)                                        // This box eats leading mismatches? (in the source string)
+            { dbgPrint(" (<"); }                                              // then print PACMAN
 
-         dbgPrint(" <end>\r\n");
+         dbgPrint(" <end>\r\n");                                              // Says Chars_Box all printed..
       }
-      else
+      else                                                                    // else more items in 'cb'.
       {
-         dbgPrint("%d: %s ", idx, opcodeNames(lst->opcode));
+         dbgPrint("%d: %s ", idx, opcodeNames(seg->opcode));                  // Print the name of this CharsBox item e.g 'Class' for a char-class.
 
          // If this char-list opens a subgroup then print '(' to the left of the chars-list .
-         if(cb->opensGroup == TRUE && lst->opcode != OpCode_Match)   // But don't print bracket for 'Match' terminator. It's confusing.
+         if(cb->opensGroup == TRUE && seg->opcode != OpCode_EndCBox)          // But don't print bracket for 'Match' terminator. It's confusing.
             dbgPrint("(");
 
-         switch(lst->opcode) {
-            case OpCode_Chars:
-               numChars = MinU8(lst->payload.chars.len, _PrintBufSize-1);
-               memcpy(buf, lst->payload.chars.start, numChars);
-               buf[numChars] = '\0';
-               dbgPrint("\"%s\"", buf);
+         #define _PrintBufSize 100
+         C8 buf[_PrintBufSize];
+
+         switch(seg->opcode) {                                                // This segment of the CharsBox is? ...
+            case OpCode_Chars:  {                                             //    ... a (reference to) a piece of the regex.
+               U8 numChars = MinU8(seg->payload.chars.len, _PrintBufSize-1);  // Will copy up to as many chars as will fit in format buffer.
+               memcpy(buf, seg->payload.chars.start, numChars);               // Copy regex segment into 'buf'
+               buf[numChars] = '\0';                                          // Make into a string.
+               dbgPrint("\"%s\"", buf);                                       // and print.
+               break; }
+
+            case OpCode_EscCh:                                                //    ... a single escaped char
+               dbgPrint("\"%s\"", printsEscCh(seg->payload.esc.ch));          // which we print using the printsEscCh() translator
                break;
 
-            case OpCode_EscCh:
-               dbgPrint("\"%s\"", printsEscCh(lst->payload.esc.ch));
-               break;
+            case OpCode_Class: {                                              //    ... a character class in a 'C8Bag_'.
+               C8 listClass[256];                                             // Will list the elements of the class here (Should really need just a s
 
-            case OpCode_Class:
-               C8bag_List(listClass, lst->payload.charClass);
+               C8bag_List(listClass, seg->payload.charClass);                 // using C8bag_List(), (which should really print only the <128 printables)
                dbgPrint("[%s]", listClass);
-               break;
+               break; }
 
          }
-         if(lst->opcode != OpCode_Null && lst->opcode != OpCode_Match)
-            { printAnyRepeats(rpts); }
+         // If 'opcode' was for a chars-segment (above) then print repeat count/range.
+         if(seg->opcode != OpCode_Null && seg->opcode != OpCode_EndCBox)
+            { printAnyRepeats(rpts); }                                        // e.g {3} = just 3; [3,6] = 3 to 6 etc.
 
          // If this char-list closes a subgroup then print ')' to the right of the chars-list .
-         if(cb->closesGroup == TRUE && lst->opcode != OpCode_Match)  // But don't print bracket for 'Match' terminator. It's confusing.
+         if(cb->closesGroup == TRUE && seg->opcode != OpCode_EndCBox)         // But don't print bracket for 'Match' terminator. It's confusing.
             dbgPrint(")");
 
          dbgPrint("  ");
-
       }
-      if(lst->opcode == OpCode_Match)
-         { break; }
+      if(seg->opcode == OpCode_EndCBox)                                       // Got 'EndCBox' (and it printed above)?
+         { break; }                                                           // then done printing.
    }
 }
 
-/* --------------------------------- regexlt_sprintCharBox_partial ------------------------------ */
+/* --------------------------------- regexlt_sprintCharBox_partial ------------------------------
 
-PUBLIC void regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb)
+   Print Chars-Box 'cb' into 'out', but no more than 'maxChars' (excluding '\0'). So 'out' must
+   be at least 'maxChars + 1'.
+*/
+PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxChars)
 {
    #define _PrintBufSize 100
    C8          buf[_PrintBufSize];
-   C8          listClass[256];
-   U8          numChars;
    T_InstrIdx  idx;
-   S_Chars     *lst = cb->buf;
+   S_Chars     *seg = cb->segs;
 
-   out[0] = '\0';
-
-   for(idx = 0; lst->opcode != OpCode_Match && lst->opcode != OpCode_Null && idx < 10; idx++, lst++)
+   if(maxChars == 0)
    {
-      // If this char-list opens a subgroup then print '(' to the left of the chars-list .
-      if(cb->opensGroup == TRUE && lst->opcode != OpCode_Match)   // But don't print bracket for 'Match' terminator. It's confusing.
-      sprintf(EndStr(out), "(");
+      return 0;
+   }
+   else
+   {
+      U16 charCnt;
+      out[0] = '\0';
 
-      switch(lst->opcode) {
-         case OpCode_Chars:
-            numChars = MinU8(lst->payload.chars.len, _PrintBufSize-1);
-            memcpy(buf, lst->payload.chars.start, numChars);
-            buf[numChars] = '\0';
-            sprintf(EndStr(out), "<%s>", buf);
-            break;
+      #define _MaxBoxElements 10
 
-         case OpCode_EscCh:
-            sprintf(EndStr(out), "<%s>", printsEscCh(lst->payload.esc.ch));
-            break;
+      for(idx = 0, charCnt = 0;                                                        // From start of CharsBox, nothing printed yet....
+          seg->opcode != OpCode_EndCBox && seg->opcode != OpCode_Null &&               // Until end of CBox...
+          idx < _MaxBoxElements;                                                       // But no more than (10) items
+          idx++, seg++)
+      {
+         /* If this char-list opens a subgroup then print '(' to the left of the chars-list.
+            But don't print that bracket for 'Match' terminator. It's confusing.
+         */
+         if(cb->opensGroup == TRUE && seg->opcode != OpCode_EndCBox)
+         {
+            if(charCnt + 1 > maxChars)
+               { goto printCBox_Done; }
+            else
+               { sprintf(out, "(");  charCnt++; out++; }
+         }
 
-         case OpCode_Class:
-            C8bag_List(listClass, lst->payload.charClass);
-            sprintf(EndStr(out), "[%s]", listClass);
-            break;
+         switch(seg->opcode) {                                                         // This segment is a...
+            case OpCode_Chars: {                                              // ...a piece of the source regex.
+               U8 segChars = MinU8(seg->payload.chars.len, _PrintBufSize-1);           // Will copy no more chars from segment than we can buffer.
 
-      // If this char-list closes a subgroup then print ')' to the right of the chars-list .
-      if(cb->closesGroup == TRUE && lst->opcode != OpCode_Match)  // But don't print bracket for 'Match' terminator. It's confusing.
-         sprintf(EndStr(out), ")");
+               if(charCnt + segChars + 2 > maxChars)                                   // What we want to copy will not fit in 'out'?
+                  {  goto printCBox_Done; }                                            // then quit with what we printed so far.
+               else
+               {
+                  memcpy(buf, seg->payload.chars.start, segChars);                     // Otherwise copy into 'buf'
+                  buf[segChars] = '\0';
+                  sprintf(out, "<%s>", buf);                                           // and print to 'out', enclosed in '<>'.
+                  charCnt += (segChars+2);
+                  out += (segChars+2);
+                  break;
+               }}
 
-      if(lst->opcode == OpCode_Match)
-         { break; }
+            case OpCode_EscCh:                                                // ...an escape sequence, printed; 1 or 2 chars
+               if(charCnt + 2 + 2 > maxChars)                                          // No room to add e.g '<\t>'?
+                  { goto printCBox_Done; }                                             // then quit with what we printed so far.
+               else {
+                  sprintf(out, "<%s>", printsEscCh(seg->payload.esc.ch));              // else append to 'out'.
+                  charCnt += (2+2);                                                    // We added 3 or 4 chars.
+                  out += (2+2);
+                  break; }
+
+            case OpCode_Class: {                                              // ...a char class
+               C8 listClass[257];
+               C8bag_List(listClass, seg->payload.charClass);                          // List elements of the class. 0..256off
+               size_t len = strlen(listClass);                                         // We have these many
+
+               if(charCnt + len + 2 > maxChars)                                        // No room to add e.g '[12345]'?
+                  {  goto printCBox_Done; }                                            // then quit with what we printed so far.
+               else
+               {
+                  sprintf(out, "[%s]", listClass);                                     // else append to 'out'
+                  charCnt += (len + 2);                                                // We added class chars plus brackets.
+                  out += (len+2);
+               }
+               break; }
+
+         /* If this char-list opens a subgroup then print ')' to the right of the chars-list.
+            But don't print that bracket for 'Match' terminator. Same as for '(', open..
+         */
+         if(cb->closesGroup == TRUE && seg->opcode != OpCode_EndCBox)
+         {
+            if(charCnt + 1 > maxChars)
+               { goto printCBox_Done; }
+            else
+               { sprintf(out, ")");  charCnt++; out++; }
+         }
+
+         if(seg->opcode == OpCode_EndCBox)
+            { break; }
+         }
       }
+printCBox_Done:
+      return charCnt;
    }
 }
 
-/* ------------------------------- regexlt_printProgram ---------------------------------------- */
+/* ------------------------------- regexlt_printProgram ----------------------------------------
 
+   List the compiled regex 'prog'
+*/
 PUBLIC void regexlt_printProgram(S_Program *prog)
 {
    T_InstrIdx idx;
@@ -221,27 +282,37 @@ PUBLIC void regexlt_printProgram(S_Program *prog)
 
    dbgPrint("------ Compiled Regex:\r\n");
 
-   for(idx = 0, rpts = NULL; idx < prog->instrs.put && idx < 20; idx++, instr++)
+   // Limit the number of lines in case compile produced an unterminated program.
+   #define _MaxProgLines 40
+
+   for(idx = 0, instr = prog->instrs.buf,                            // From the start of the program
+       rpts = NULL;
+       idx < prog->instrs.put; idx++, instr++)                       // until the 'put'; which is the end.
    {
-      dbgPrint("%d: %s ", idx, opcodeNames(instr->opcode));
+      if(idx >= _MaxProgLines)                                       // 'prog' had too many lines to print
+      {
+         printf("Too many lines (%d) to print - raise the limit! ****************\r\n", idx);
+         return;                                                     // then say so.
+      }
 
-      switch(instr->opcode) {
+      dbgPrint("%d: %s ", idx, opcodeNames(instr->opcode));          // Print opcode 'Jump', 'Split', 'Chars'(Box), 'match' or 'NOP'.
 
-         case OpCode_CharBox:
-            if(instr->charBox.buf == NULL)
-               {dbgPrint("empty CharBox\r\n");}
+      switch(instr->opcode) {                                        // If Current opcode is.... may append stuff.
+
+         case OpCode_CharBox:                                        // Chars-Box?
+            if(instr->charBox.segs == NULL)                          // Empty? it shouldn't be
+               {dbgPrint("empty CharBox\r\n");}                      // Say so!
             else
-               { printCharBox(&instr->charBox, rpts);
-//               { dbgPrint("\r\n"); printCharBox(&instr->charBox, rpts);
+               { printCharsBox(&instr->charBox, rpts);               // else append the Chars-Box contents
                  rpts = NULL; }                                      // Repeat spec, if any, was printed. Cancel so we don't reprint.
             break;
 
-         case OpCode_Jmp:
-            dbgPrint("%d ", instr->left);
+         case OpCode_Jmp:                                            // Jump?
+            dbgPrint("%d ", instr->left);                            // then show jump destination, which is left-branch.
             break;
 
-         case OpCode_Split:
-            dbgPrint("(%d, %d) ", instr->left, instr->right);
+         case OpCode_Split:                                          // Split?
+            dbgPrint("(%d, %d) ", instr->left, instr->right);        // then show both destinations.
             /* Any repeat-specification for the following Char-Box is held with (this) '_Split'.
                For clarity we want to print repeat-spec after the contents of the Char_Box. Take a
                ref now to use later with the 'case OpCode_CharBox:'.
