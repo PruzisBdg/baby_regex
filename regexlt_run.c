@@ -175,11 +175,11 @@ typedef struct {
 #define _EatMismatches   TRUE
 #define _StopAtMismatch  FALSE
 
-typedef U8 ThreadListLen;
+typedef U8 T_ThrdListIdx;
 
 typedef struct {
    S_Thread       *ts;
-   ThreadListLen   len, put;
+   T_ThrdListIdx   len, put;
 } S_ThreadList;
 
 
@@ -204,7 +204,7 @@ PRIVATE void addMatch(S_Thread *t, C8 const *inStr, C8 const *start, C8 const *e
 
    Returns a list to hold/run 'len' threads. NULL if malloc() failed.
 */
-PRIVATE S_ThreadList * threadList(ThreadListLen len)
+PRIVATE S_ThreadList * threadList(T_ThrdListIdx len)
 {
    S_Thread     *thrd;
    S_ThreadList *lst;
@@ -264,53 +264,59 @@ typedef struct {
 
 /* ------------------------------------------ newThread ------------------------------------------
 
-   .
+   Make and return a new thread with a match-list empty or no, specified by 'mcf'.
+
+   'src' is the current read of the input string. 'groupStart' and 'rpts' are copied from the
+   thread which spawned this one.
 */
-PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, U8 cnt, C8 const *groupStart, S_ThrdMatchCfg const *mcf, BOOL eatMismatches)
+PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 const *groupStart, S_ThrdMatchCfg const *mcf, BOOL eatMismatches)
 {
    static S_Thread t;
-   t.pc = pc;
-   t.sp = src;
-   t.runCnt = cnt;
-   t.subgroupStart = groupStart;
 
-   if(mcf->lst == NULL)                      // No existing matches to clone or reference?
+   t.pc = pc;                          // Program counter
+   t.sp = src;                         // input string read at...
+   t.runCnt = rpts;                    // Repeats of this thread so far.
+   t.subgroupStart = groupStart;       // If this thread starts a sub-group.
+   t.eatMismatches = eatMismatches;    // if this thread eats leading mismatches.
+
+   if(mcf->lst == NULL)                                                                // No existing matches to clone or reference?
    {
-      t.matches.put = 0;                     // then match list for this thread starts empty
-                                             // and malloc() 'newBufSize' slots for this list
-      if( (t.matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) != NULL)
-      {
-         t.matches.bufSize = mcf->newBufSize;
-         t.matches.isOwner = TRUE;
-      }
+      t.matches.put = 0;                                                               // then match list for this thread starts empty
+
+      // Malloc() 'newBufSize' slots for this match-list
+      if( (t.matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) == NULL)      // Couldn't malloc for matches?
+         { t.matches.bufSize = 0; }                                                    // then say there's space for none.
+      else
+         { t.matches.bufSize = mcf->newBufSize; }                                      // else malloc success; we can hold these many matches.
+      t.matches.isOwner = TRUE;                                                        // Either way; we own the space/non-space for these matches.
    }
-   else                                      // else there's and existing match list to clone or reference.
+   else                                                                                // else there's and existing match list to clone or reference.
    {
-      t.matches = *(mcf->lst);               // Copy the list-shell.
+      t.matches = *(mcf->lst);                                                         // Copy the 'shell' of the match list.
 
-      if(mcf->clone) {                       // Are we cloning it?
-                                             // then malloc() 'newBufSize'  fresh slots
-         if( (t.matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) != NULL) {
-            t.matches.bufSize = mcf->newBufSize;
-            t.matches.isOwner = TRUE;
+      if(mcf->clone) {                                                                 // Are we cloning the match-list?, not just referencing the matches.
+                                                                                       // then malloc() 'newBufSize'  fresh slots
+         if( (t.matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) == NULL)   // Could not malloc for the matches we must clone?
+         {
+            t.matches.bufSize = 0;                                                     // then we got a zero-sized match list
+         }
+         else {
+            t.matches.bufSize = mcf->newBufSize;                                       // else malloc success; can hold this many matches.
+            t.matches.isOwner = TRUE;                                                  // which we will clone, so we own them.
 
-            if(mcf->lst->put > 0) {          // there's are matches in the existing list?
-                                             // then copy them into the new list we just made.
-               memcpy(t.matches.ms, mcf->lst->ms, mcf->lst->put * sizeof(S_Match)); }}
+            if(mcf->lst->put > 0) {                                                    // There are matches in the existing list?
+               memcpy(t.matches.ms, mcf->lst->ms, mcf->lst->put * sizeof(S_Match)); }} // then copy them into the new list we just made.
          }
       else {
          t.matches.isOwner = FALSE;
       }
    }
-   t.eatMismatches = eatMismatches;
    return &t;
 }
 
-/* ------------------------------------------ clearList ------------------------------------------
+/* ------------------------------------------ clearThreadList ------------------------------------------ */
 
-
-*/
-PRIVATE void clearList(S_ThreadList *l)
+PRIVATE void clearThreadList(S_ThreadList *l)
 {
    /* Before clearing the list free() any memory allocated for matches. Matches are
       made by one thread and referenced by others which are created as the regex is
@@ -334,16 +340,22 @@ PRIVATE void clearList(S_ThreadList *l)
    l->put = 0;
 }
 
+/* ----------------------------------- swapPtr ---------------------------------------- */
+
 PRIVATE void swapPtr(S_ThreadList **a, S_ThreadList **b)
    { S_ThreadList *t; t = *a; *a = *b; *b = t; }
 
 
-PRIVATE C8 * printEat(C8 *buf, BOOL printBlank, U8 cput, T_InstrIdx pc)
+/* ------------------------------------ prntAddThrd ------------------------------------
+
+   Show what thread was added to left or right. Printout to 'buf'.
+*/
+PRIVATE C8 * prntAddThrd(C8 *buf, BOOL printBlank, T_ThrdListIdx thrd, T_InstrIdx attachedInstruction)
 {
    if(printBlank)
-      { buf[0] = '_'; buf[1] = '\0'; }
+      { buf[0] = '_'; buf[1] = '\0'; }                            // Meaning nothing was added
    else
-      { sprintf(buf, "%d(%d:)", cput, pc); }
+      { sprintf(buf, "%d(%d:)", thrd, attachedInstruction); }     // "thrd(instr:)"
    return buf;
 }
 
@@ -428,7 +440,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
       Because no instruction splits into more than 2 paths, the tree/threads for executing
       'prog' can be no wider than 'prog' is long, plus 1 for the root thread.
    */
-   ThreadListLen len = prog->put + 3;     // Add 3 to be safe.
+   T_ThrdListIdx len = prog->put + 3;     // Add 3 to be safe.
    curr = threadList(len);
    next = threadList(len);
 
@@ -464,15 +476,16 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
 
    do {
-      T_InstrIdx pc;
-      S_Instr const *ip;
-      C8 const *sp;               // Advance through input string.
-      C8 const *gs;
-      C8 const *cBoxStart;          // Start of current Char-Box (while 'strP' may be advanced past Box)
-      T_RepeatCnt loopCnt = 0;
+      T_InstrIdx     pc;
+      S_Instr const  *ip;
+      C8 const       *sp;               // Advance through input string.
+      C8 const       *gs;
+      C8 const       *cBoxStart;          // Start of current Char-Box (while 'strP' may be advanced past Box)
+      T_RepeatCnt    loopCnt = 0;
 
-      ThreadListLen ti;
-      BOOL addL, addR; U8 cput;
+      T_ThrdListIdx  ti;
+      T_ThrdListIdx  cput;
+      BOOL addL, addR;
 
       if(c % 10 == 0) {
          dbgPrint("   PC CBox/Op      inStr    [thrd -> l(@pc:), r(@pc:) {rpt-cnt}]:\r\n"
@@ -568,8 +581,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                                                                         addL ? "==" : "(<",
                                                                         printTriad(cBoxStart),
                                                                         ti,
-                                                                        printEat(bufL, addL==FALSE, cput, pc+1),
-                                                                        printEat(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, pc),
+                                                                        prntAddThrd(bufL, addL==FALSE, cput, pc+1),
+                                                                        prntAddThrd(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, pc),
                                                                         loopCnt);
                }
                else                                                  // else we got the 1st match (above)
@@ -737,8 +750,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                                                                         pc, ip->left, ip->right,
                                                                         printTriad(sp),
                                                                         ti,
-                                                                        printEat(bufL, addL==FALSE, cput, ip->left),
-                                                                        printEat(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, ip->right),
+                                                                        prntAddThrd(bufL, addL==FALSE, cput, ip->left),
+                                                                        prntAddThrd(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, ip->right),
                                                                         prntRpts(&ip->repeats, loopCnt),
                                                                         ip->left < pc ? "++" : "");
 
@@ -759,13 +772,13 @@ EndsCurrentStep:
                                                                         dbgPrint("\r\nnew list %d: [curr.put <- next.put]: [%d %d]->[%d _]\r\n",
                                                                                                                   c, curr->put, next->put, next->put);
       swapPtr(&curr, &next);
-      clearList(next);
+      clearThreadList(next);
 
    } while(curr->put > 0 && ++c < 20);
 
 
 CleanupAndRtn:
-   clearList(curr);
+   clearThreadList(curr);
    unThreadList(curr);
    unThreadList(next);
    return rtn;
