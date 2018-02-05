@@ -97,7 +97,6 @@ PRIVATE void wrRecordAt(RegexLT_S_Match *m, C8 const *at, RegexLT_T_MatchLen idx
 #define _IgnoreShorter  FALSE
 #define _ReplaceShorter TRUE
 
-#if 1
 PRIVATE BOOL recordMatch(RegexLT_S_MatchList *ml, C8 const *at, RegexLT_T_MatchLen idx, RegexLT_T_MatchLen len, BOOL replaceShorterSubmatch)
 {
    if(ml != NULL) {
@@ -116,34 +115,10 @@ PRIVATE BOOL recordMatch(RegexLT_S_MatchList *ml, C8 const *at, RegexLT_T_MatchL
 
    return FALSE;
 }
-#else
-PRIVATE BOOL recordMatch(RegexLT_S_MatchList *ml, C8 const *at, RegexLT_T_MatchLen idx, RegexLT_T_MatchLen len, BOOL replaceShorterSubmatch)
-{
-   if(ml != NULL) {
-
-      if(replaceShorterSubmatch) {
-         U8 c;
-         for(c = 0; c < ml->put; c++) {
-            if(ml->matches[c].idx == idx) {
-               wrRecordAt(&ml->matches[c], at, idx, len);
-               return TRUE; }}}
-
-      if(ml->put < ml->listSize) {
-         wrRecordAt(&ml->matches[ml->put], at, idx, len);
-         ml->put++;
-         return TRUE; }}
-
-   return FALSE;
-}
-
-#endif
-
-
 
 
 /* ---------------------- Regex engine threads support --------------------------------- */
 
-//#define _MatchBufLen 5
 typedef struct {
    RegexLT_T_MatchIdx start;     // 1st char of matched segment, relative to start of input string
    RegexLT_T_MatchLen len;       // This many bytes long.
@@ -238,7 +213,7 @@ PRIVATE BOOL addThread(S_ThreadList *l, S_Thread const *toAdd)
 {
    if(l->put >= l->len)
    {
-printf("****** No Add put %d len %d\r\n ***********\r\n", l->put, l->len);
+      printf("****** No Add put %d len %d\r\n ***********\r\n", l->put, l->len);
       return FALSE;
    }
    else
@@ -394,13 +369,18 @@ PRIVATE C8 const *printTriad(C8 const *p)
    return buf;
 }
 
+/* ----------------------------------------- printRegexSample ------------------------------
+
+
+
+*/
 PRIVATE C8 const * printRegexSample(S_CharsBox const *cb)
 {
-   static C8 rgxBuf[200];
-
    #define _width 8
+   static C8 rgxBuf[_width+2];
 
-   regexlt_sprintCharBox_partial(rgxBuf, cb);
+
+   regexlt_sprintCharBox_partial(rgxBuf, cb, _width);
    strcat(rgxBuf, "         ");
    rgxBuf[_width] = '\0';
    if( rgxBuf[_width-1] != ' ' )
@@ -410,6 +390,11 @@ PRIVATE C8 const * printRegexSample(S_CharsBox const *cb)
 
 }
 
+/* ----------------------------------------- prntRpts --------------------------------------
+
+    Print the repeats-spec 'r' (for a thread) and the current repeat-count (of that thread)
+    Same-ish format as printAnyRepeats() in regexlt_print.c
+*/
 PRIVATE C8 const * prntRpts( S_RepeatSpec const *r, T_RepeatCnt cnt )
 {
    static C8 buf[20];
@@ -524,7 +509,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                {                                                                 // then advance thru input string until we find 1st match
                   addL = FALSE; addR = FALSE; cput = next->put;
 
-                  if( matchCharsList(ip->charBox.buf, &sp, mustEnd) == TRUE)     // Matched current CharBox?...
+                  if( matchCharsList(ip->charBox.segs, &sp, mustEnd) == TRUE)     // Matched current CharBox?...
                   {                                                              // ...yes, 'sp' is now at 1st char AFTER matched segment.
                      addL = TRUE;                                                // so we will advance this thread
 
@@ -587,7 +572,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                }
                else                                                  // else we got the 1st match (above)
                {
-                  if( matchCharsList(ip->charBox.buf, &sp, mustEnd) == TRUE)     // Source chars matched? ...
+                  if( matchCharsList(ip->charBox.segs, &sp, mustEnd) == TRUE)     // Source chars matched? ...
                   {
                                                                                  // ...(and 'sp' is advanced beyond the matched segment)
                      /* Because we matched, continue this execution path. Package the NEXT instruction

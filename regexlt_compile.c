@@ -161,7 +161,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
    S_ParseCharClass parseClass;
    T_ParseRtn rtn;
 
-   S_Chars * cb = cBox->buf;
+   S_Chars * cb = cBox->segs;
    T_InstrIdx idx = 0;                 // Fill 'cb' starting at cBox->buf[0].
 
    /* If got a '(' rightaway. then this chars-list either opens a subgroup or will be an
@@ -322,7 +322,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
 PRIVATE void clearRepeats(S_RepeatSpec *r) {r->min = r->max = 0; r->valid = FALSE; }
 
 PRIVATE S_CharsBox const emptyCharsBox =
-   {.buf = NULL, .len = 0, .opensGroup = FALSE, .closesGroup = FALSE, .eatUntilMatch = FALSE };
+   {.segs = NULL, .len = 0, .opensGroup = FALSE, .closesGroup = FALSE, .eatUntilMatch = FALSE };
 
 
 PRIVATE void addNOP(S_Program *p)
@@ -475,7 +475,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
    prog->classes.put = 0;
    C8 firstOp = 0;
 
-   S_CharsBox cb = {.buf = prog->chars.buf, .len = 0 };
+   S_CharsBox cb = {.segs = prog->chars.buf, .len = 0 };
 
    S_RepeatSpec   rpt;
    #define _NotANOP 0xFF
@@ -580,7 +580,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                }
 
                cb = emptyCharsBox;                       // Make a new S_CharsBox for fillCharBox() to fill.
-               cb.buf = &prog->chars.buf[prog->chars.put];  // Give it the next free space from what was malloced for S_CharsBox[]
+               cb.segs = &prog->chars.buf[prog->chars.put];  // Give it the next free space from what was malloced for S_CharsBox[]
 
                segStart = rgxP;                          // Mark start of this segment; we will
                if( fillCharBox(&prog->classes, &cb, &rgxP) == FALSE)   // Got (contiguous) chars into 'cb'?

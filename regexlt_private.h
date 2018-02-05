@@ -93,7 +93,9 @@ enum {
    OpCode_CharBox,            // List of 'Chars', 'EscCh', 'Class', representing a contiguous stretch of the regex between operators.
    OpCode_Jmp,                // Jump relative
    OpCode_Split,              // Split into 2 simultaneous threads of execution.
-   OpCode_Match } eOpCode;    // Terminates both character box list and compiled regex instructions list.
+   OpCode_Match,
+   OpCode_EndCBox = OpCode_Match // Terminates both character box list and compiled regex instructions list.
+   } eOpCode;
 
 static inline BOOL opCode_HoldsChars(T_OpCode op)
    { return op == OpCode_Chars || op == OpCode_EscCh || op == OpCode_Class; }
@@ -116,7 +118,7 @@ typedef struct  {                   // Holds either a char segment, escaped char
 } S_Chars;
 
 typedef struct {                    // A box of one or more character segments or classes in the match string.
-   S_Chars     *buf;                // The char segments and char classes.
+   S_Chars     *segs;               // The char segments and char classes.
    T_InstrIdx  len;                 // Number of elements in 'buf'
    BOOL        opensGroup,
                closesGroup;
@@ -167,7 +169,7 @@ PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
 PUBLIC void regexlt_safeFreeList(void **lst, U8 listSize);
 PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
 
-PUBLIC void regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb);
+PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxChars);
 
 PUBLIC C8 rightOperator(C8 const *rgx);
 

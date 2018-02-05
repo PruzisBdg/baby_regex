@@ -315,7 +315,7 @@ PUBLIC T_RegexRtn RegexLT_Replace(C8 const *searchRegex, C8 const *inStr, C8 con
 PUBLIC void RegexLT_FreeMatches(RegexLT_S_MatchList const *ml)
 {
    safeFree(ml->matches);     // First free matches.
-   safeFree(ml);              // then the enclosing match-list;
+   safeFree((void*)ml);              // then the enclosing match-list;
 }
 
 
