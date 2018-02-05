@@ -90,6 +90,9 @@ PRIVATE S_Test const tests[] = {
    // Regex            Test string        Result code           Matches (if any)
    //                                                      {how_many [start, len]..}
    // ----------------------------------------------------------------------------
+   { "abc",          "",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
+   { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
+
    { ".*def",        "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
    { ".{2,}def",     "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
    { ".*de{1}f",     "abcdeefghij",          E_RegexRtn_NoMatch,  {0, {}}              },
@@ -142,13 +145,8 @@ PRIVATE RegexLT_S_Cfg cfg = {
 
 PRIVATE S_Test const tests[] = {
    //{ "(\\d{3})|(\\(\\d{3}\\))[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
-   //{ "(3)|(\\d{3})",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
-//   { "(3)|(4)",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,12}}}  },
 
-   //{ "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "a414-777-9214 nn",  E_RegexRtn_Match,    {1, {{4,12}}}  },
    //{ "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
-//   { "b+",           "abbbbefghij",          E_RegexRtn_Match,    {1, {{1,4}}}         },
-      { ".*d(e*)f",     "abcdeefghij",          E_RegexRtn_Match,    {2, {{0,7}, {4,2}}}  },
 
 };
 
@@ -186,7 +184,8 @@ PRIVATE S_TestRightOperator const rightOpTests[] = {
 
    // Post operator captures previous char.
    { "ab+",     'E' },
-   { "ab?",     'E' },
+   { "ab?",     'E' },                  thrd->matches.ms[0].len = cBoxStart - str - thrd->matches.ms[0].start;
+
    { "ab*",     'E' },
    { "ab{2}",   'E' },
 

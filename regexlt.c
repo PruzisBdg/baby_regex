@@ -7,11 +7,12 @@
 |
 | The program compiles the search expression into a non-deterministic finite
 | automaton (NFA) and executes the multiple paths through the NFA on the input in
-| lockstep. A match is the first path which exhausts the regex expression.
+| lockstep. A match is the longest of those paths which first exhaust the regex.
+| (more than one path may exhaust the regex simultaneously)
 |
 | So there's no backtracking; any path which fails on the current input char is
-| terminated while the remaining paths continue (to the next char). No backtracking
-| eliminates exponential blowup with multiple alternates constructions.
+| terminated while remaining paths continue (to the next char). No backtracking
+| eliminates exponential blowup with multiple alternates.
 |
 | Thompson's insight was that the width of the execution tree (the number of
 | simultaneous threads) can never be more than than number of compiled regex
@@ -19,6 +20,30 @@
 | branch/thread AND because a regex, by definition, can be executed on a DFA.
 | So once the regex is compiled, the amount of memory needed to run it is
 | known/bounded.
+|
+| Corner cases:
+|  - Empty string is no match.
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|  Public:
+|     RegexLT_Init()
+|     RegexLT_Match()
+|     RegexLT_Replace()
+|     RegexLT_PrintMatchList()
+|     RegexLT_PrintMatchList_OnOneLine()
+|     RegexLT_FreeMatches()
+|     RegexLT_RtnStr()
 |
 --------------------------------------------------------------------------------*/
 
@@ -99,8 +124,9 @@ PUBLIC void RegexLT_PrintMatchList(RegexLT_S_MatchList const *ml)
       for( c = 1; c < ml->put; c++ )
          { printOneMatch(&ml->matches[c]); }       // 'subs: [1,43 'dog'  [7,9] 'cat'
    }
-
 }
+
+/* ------------------------ RegexLT_PrintMatchList_OnOneLine ------------------------- */
 
 PUBLIC void RegexLT_PrintMatchList_OnOneLine(RegexLT_S_MatchList const *ml)
 {
@@ -151,7 +177,7 @@ PUBLIC void RegexLT_Init(RegexLT_S_Cfg const *cfg) { regexlt_cfg = cfg; }
 
 /* -------------------------------- RegexLT_Match --------------------------------------
 
-   Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'
+   Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'.
 */
 PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_MatchList **ml, RegexLT_T_Flags flags)
 {
