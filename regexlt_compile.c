@@ -123,7 +123,6 @@ PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_Chars *cb, T_InstrIdx *
    Return TRUE if 'rgx' is a (valid) repeat operator. These are '+','*','?'
    OR '{n,n}'.
 */
-
 PRIVATE BOOL isaRepeat(C8 const *rgx)
 {
    C8 const    **h = &rgx;                         // Input to parseRepeat()
@@ -153,7 +152,6 @@ PRIVATE BOOL isaRepeat(C8 const *rgx)
       - couldn't malloc() for a (needed) character class.
 */
 extern C8 const *opcodeNames(T_OpCode op);
-
 
 PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexStr)
 {
@@ -228,6 +226,14 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                         { classParser_Init(&parseClass); }           // else got a new class. Also need a parser to load it.
                      break;
 
+                  case '^':
+                  case '$':
+                     if(cb[idx].opcode != OpCode_Null) idx++;        // If necessary, advance to an open 'Null' char-box....
+                     cb[idx].opcode = OpCode_Anchor;                 // ...(which will) hold an anchor.
+                     cb[idx].payload.anchor.ch = ch;                 // This is the anchor char;
+                     cb[++idx].opcode = OpCode_Null;                 // Advance and clean out next char-segment.
+                     break;
+
                   case '\\':     // e.g '\d','\w', anything which wasn't captured by translateEscapedWhiteSpace() (above).
                      if( idx > 0 &&                                  // Already building some Chars-Box? AND
                         isaRepeat( (*regexStr)+2 ))                  // Repeat operator e.g '+' or '{3}' follows this e.g '\d'.
@@ -251,7 +257,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                         if(cb[idx].opcode != OpCode_Null) idx++;     // If necessary, advance to an open 'Null' char-box.
 
                         cb[idx].opcode = OpCode_EscCh;               // and make an EscCh instruction
-                        cb[idx].payload.esc.ch = ch;               // Put ASCII code in 'OpCode_EscCh'.
+                        cb[idx].payload.esc.ch = ch;                 // Put ASCII code in 'OpCode_EscCh'.
                         cb[++idx].opcode = OpCode_Null;              // Advance to an open 'Null slot'.
                      }
                      else                                            // else printable

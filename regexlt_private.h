@@ -91,23 +91,29 @@ enum {
    OpCode_EscCh,              // Single escaped char from the regex string e.g '\n' or \d (a digit)
    OpCode_Class,              // Character class e.g [0-9a-z]
    OpCode_CharBox,            // List of 'Chars', 'EscCh', 'Class', representing a contiguous stretch of the regex between operators.
+   OpCode_Anchor,             // '^','$'.
    OpCode_Jmp,                // Jump relative
    OpCode_Split,              // Split into 2 simultaneous threads of execution.
    OpCode_Match,
    OpCode_EndCBox = OpCode_Match // Terminates both character box list and compiled regex instructions list.
    } eOpCode;
 
+static inline BOOL isAnchor(C8 ch)
+   { return ch == '^' || ch == '$'; }
+
 static inline BOOL opCode_HoldsChars(T_OpCode op)
-   { return op == OpCode_Chars || op == OpCode_EscCh || op == OpCode_Class; }
+   { return op == OpCode_Chars || op == OpCode_EscCh || op == OpCode_Class || op == OpCode_Anchor; }
 
 // A segment of chars in the source regex.
 typedef U8 T_CharSegmentLen;
 typedef struct {C8 const *start; T_CharSegmentLen len; } S_CharSegment;
 typedef struct { C8 ch; } S_EscChar;
+typedef struct { C8 ch; } S_Anchor;
 
 typedef union {                     // One of... from the match string.
    S_CharSegment chars;             //    a char segment (start, numChars)
    S_EscChar     esc;               //    an escaped char e.g \n, \t
+   S_Anchor      anchor;
    S_C8bag       *charClass;        //    a char class e.g [0-8ab]
 } U_Payload;
 

@@ -48,6 +48,7 @@ PUBLIC C8 const *opcodeNames(T_OpCode op)
       // Chars-Box (CBox) contents.
       case OpCode_Chars:   return "Chars";
       case OpCode_EscCh:   return "Esc";
+      case OpCode_Anchor:  return "Anchor";
       case OpCode_Class:   return "Class";
 
       // Common to Program and CBox
@@ -147,6 +148,10 @@ PRIVATE void printCharsBox(S_CharsBox const *cb, S_RepeatSpec const *rpts)
                dbgPrint("\"%s\"", printsEscCh(seg->payload.esc.ch));          // which we print using the printsEscCh() translator
                break;
 
+            case OpCode_Anchor:
+               dbgPrint("\"%c\"", seg->payload.anchor.ch);
+               break;
+
             case OpCode_Class: {                                              //    ... a character class in a 'C8Bag_'.
                C8 listClass[256];                                             // Will list the elements of the class here (Should really need just a s
 
@@ -230,6 +235,15 @@ PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxC
                   { goto printCBox_Done; }                                             // then quit with what we printed so far.
                else {
                   sprintf(out, "<%s>", printsEscCh(seg->payload.esc.ch));              // else append to 'out'.
+                  charCnt += (2+2);                                                    // We added 3 or 4 chars.
+                  out += (2+2);
+                  break; }
+
+            case OpCode_Anchor:
+               if(charCnt + 2 + 2 > maxChars)                                          // No room to add e.g '<\t>'?
+                  { goto printCBox_Done; }                                             // then quit with what we printed so far.
+               else {
+                  sprintf(out, "<%c>", seg->payload.anchor.ch);                        // else append to 'out'.
                   charCnt += (2+2);                                                    // We added 3 or 4 chars.
                   out += (2+2);
                   break; }
