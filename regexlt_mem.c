@@ -36,6 +36,7 @@ PUBLIC void regexlt_safeFreeList(void **lst, U8 listSize)
 /* --------------------------- regexlt_getMemMultiple ------------------------------- */
 
 
+#if 0
 PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize)
 {
    U8 c;
@@ -55,6 +56,32 @@ PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize)
    }
    return TRUE;                           // else all mallocs done. Success!
 }
+#else
+PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize)
+{
+   U8 c;
+   for(c = 0; c < listSize; c++)          // For each item in the malloc() list
+   {
+      // Try each malloc(). If a malloc fails then walk back the list and undo all wot we did.
+      void **tgt = lst[c].mem;
+
+      if(tgt != NULL) {
+         if(lst[c].numBytes == 0) {
+            *tgt = NULL;
+         }
+         else {
+            if( (*tgt = br->getMem(lst[c].numBytes)) == NULL) {
+               do {                          // For this malloc and each previous one
+                  safeFree(*tgt);            // free()
+                  *tgt = NULL;               // and NULL the mem ptr.
+                  c--;
+               } while(c > 0);
+               return FALSE; } }}             // Return failure.
+   }
+   return TRUE;                           // else all mallocs done. Success!
+}
+
+#endif
 
 
 // --------------------------------------------- eof -----------------------------------------------

@@ -213,6 +213,8 @@ PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_
          else                                               // otherwise we can compile and run 'regex'.
          {
             prog.classes.size = stats.classes;
+            prog.chars.size = stats.charboxes;
+            prog.instrs.size = stats.instructions;
 
             if( compileRegex(&prog, regexStr) == FALSE)     // Compile 'regexStr' into 'prog'. Failed?
             {

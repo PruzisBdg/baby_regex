@@ -125,7 +125,8 @@ typedef struct  {                   // Holds either a char segment, escaped char
 
 typedef struct {                    // A box of one or more character segments or classes in the match string.
    S_Chars     *segs;               // The char segments and char classes.
-   T_InstrIdx  len;                 // Number of elements in 'buf'
+   T_InstrIdx  bufSize,             // Number of buf[] malloced.
+               len;                 // Number of elements in 'buf'
    BOOL        opensGroup,
                closesGroup;
    BOOL        eatUntilMatch;       // Eat source string until 1st match with chars or class in 'buf'[0].
@@ -143,12 +144,14 @@ typedef struct {                    // A (compiled) instruction. Contains:
 
 typedef struct {                    // List of character-segments and char-classes from the match string...
    S_Chars     *buf;                // ...which are here
-   T_InstrIdx  put;                 // 'put' to add another segment / number of S_Instr in 'buf'.
+   T_InstrIdx  size,                // Size of S_Chars malloced() based on pre-scan.
+               put;                 // 'put' to add another segment / number of S_Instr in 'buf'.
 } S_CharsList;
 
 typedef struct {                    // List of instructions...
    S_Instr     *buf;                // ...which are here.
-   T_InstrIdx  put;                 // 'put' to add another one / number of S_Instr in 'buf'.
+   T_InstrIdx  size,                // Size of S_Chars malloced() based on pre-scan.
+               put;                 // 'put' to add another one / number of S_Instr in 'buf'.
 } S_InstrList;
 
 // A compiled regex is...

@@ -225,7 +225,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                      else
                         { classParser_Init(&parseClass); }           // else got a new class. Also need a parser to load it.
                      break;
-
+#if 1
                   case '^':
                   case '$':
                      if(cb[idx].opcode != OpCode_Null) idx++;        // If necessary, advance to an open 'Null' char-box....
@@ -233,7 +233,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cBox, C8 const **regexSt
                      cb[idx].payload.anchor.ch = ch;                 // This is the anchor char;
                      cb[++idx].opcode = OpCode_Null;                 // Advance and clean out next char-segment.
                      break;
-
+#endif
                   case '\\':     // e.g '\d','\w', anything which wasn't captured by translateEscapedWhiteSpace() (above).
                      if( idx > 0 &&                                  // Already building some Chars-Box? AND
                         isaRepeat( (*regexStr)+2 ))                  // Repeat operator e.g '+' or '{3}' follows this e.g '\d'.
@@ -481,7 +481,11 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
    prog->classes.put = 0;
    C8 firstOp = 0;
 
-   S_CharsBox cb = {.segs = prog->chars.buf, .len = 0 };
+   /* A new zero-length Chars-Box. Attach to the malloced 'prog.chars.buf'. Copy in 'bufSize'; used
+      to check we don't overrun the malloc(), in case the pre-scan under-counted the number of
+      Chars-segments.
+   */
+   S_CharsBox cb = {.segs = prog->chars.buf, .bufSize = prog->chars.size, .len = 0 };
 
    S_RepeatSpec   rpt;
    #define _NotANOP 0xFF

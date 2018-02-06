@@ -74,7 +74,7 @@ typedef struct {
 } S_Test;
 
 
-#if 1
+#if 0
 PRIVATE RegexLT_S_Cfg cfg = {
    .getMem        = getMemCleared,
    .free          = myFree,
@@ -148,7 +148,7 @@ PRIVATE S_Test const tests[] = {
 
    //{ "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
 
-   { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
+   { "a\\d",             "abc",                  E_RegexRtn_Match,    {1, {{0,2}}}         },       // An empty regex matches everything
 
 };
 
