@@ -36,6 +36,7 @@ typedef struct {
 
    U8    classCnt,   // Numbers of character class definitions so far
          segCnt,     // Character segments so far
+         leftCnt,    // 'free' 'left' chars pending an operator. Any operator will bind the last char only.
          escCnt,     // Number of chars escaped OUTSIDE A CHAR CLASS.
          operators,
          subExprs;
@@ -126,7 +127,8 @@ typedef struct  {                   // Holds either a char segment, escaped char
 typedef struct {                    // A box of one or more character segments or classes in the match string.
    S_Chars     *segs;               // The char segments and char classes.
    T_InstrIdx  bufSize,             // Number of buf[] malloced.
-               len;                 // Number of elements in 'buf'
+               put,                 // when filling 'segs'.
+               len;                 // Number of chars-segments in 'buf'
    BOOL        opensGroup,
                closesGroup;
    BOOL        eatUntilMatch;       // Eat source string until 1st match with chars or class in 'buf'[0].

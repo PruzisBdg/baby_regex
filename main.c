@@ -148,8 +148,9 @@ PRIVATE S_Test const tests[] = {
 
    //{ "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
 
-   { "a\\d",             "abc",                  E_RegexRtn_Match,    {1, {{0,2}}}         },       // An empty regex matches everything
+   //{ "^a",             "abc",                  E_RegexRtn_Match,    {1, {{0,2}}}         },       // An empty regex matches everything
 
+   { "ab+z",         "abbbbefghij",          E_RegexRtn_NoMatch,  {0, {}}              },
 };
 
 #endif
