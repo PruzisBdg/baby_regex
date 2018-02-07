@@ -171,6 +171,12 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
                ctx->inRange = TRUE;             // then parse through that, and...
                ctx->charSeg = FALSE;            // ...if we were in a char segment we are out of it now.
             }
+            else if(isAnchor(ch))
+            {
+               ctx->charSeg = FALSE;
+               ctx->segCnt++;
+               ctx->leftCnt = 0;
+            }
             else                                // else a regular char
             {
                ctx->leftCnt++;                  // Count chars open since last operator

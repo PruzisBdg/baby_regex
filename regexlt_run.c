@@ -35,7 +35,7 @@ PRIVATE BOOL matchedRegexCh(C8 regexCh, C8 ch)
 /* ------------------------------- matchCharsList -------------------------------------- */
 
 
-PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *mustEndBy)
+PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 const *mustEndBy)
 {
    C8 ch;
 
@@ -75,10 +75,10 @@ PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *mustEndBy)
                   { break; }                          // else continue through chars list
 
             case OpCode_Anchor:           // --- A single anchor
-               if( ch != chs->payload.anchor.ch )     // Input char does not match it?
-                  { return FALSE; }                   // then fail.
+               if(*in <= start)                       // At or before start of input string? (should never be before but....)
+                  { break; }                          // then continue through chars list
                else
-                  { break; }                          // else continue through chars list
+                  { return FALSE; }                   // else fail.
 
             case OpCode_Class:            // --- A character class
                if( C8bag_Contains(chs->payload.charClass, ch) == FALSE )      // Input char is not in the class?
@@ -516,7 +516,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                {                                                                 // then advance thru input string until we find 1st match
                   addL = FALSE; addR = FALSE; cput = next->put;
 
-                  if( matchCharsList(ip->charBox.segs, &sp, mustEnd) == TRUE)    // Matched current CharBox?...
+                  if( matchCharsList(ip->charBox.segs, &sp, str, mustEnd) == TRUE)    // Matched current CharBox?...
                   {                                                              // ...yes, 'sp' is now at 1st char AFTER matched segment.
                      addL = TRUE;                                                // so we will advance this thread
 
@@ -578,7 +578,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                }
                else                                                  // else we got the 1st match (above)
                {
-                  if( matchCharsList(ip->charBox.segs, &sp, mustEnd) == TRUE)     // Source chars matched? ...
+                  if( matchCharsList(ip->charBox.segs, &sp, str, mustEnd) == TRUE)     // Source chars matched? ...
                   {
                                                                                  // ...(and 'sp' is advanced beyond the matched segment)
                      /* Because we matched, continue this execution path. Package the NEXT instruction

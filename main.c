@@ -150,7 +150,7 @@ PRIVATE S_Test const tests[] = {
 
    //{ "^a",             "abc",                  E_RegexRtn_Match,    {1, {{0,2}}}         },       // An empty regex matches everything
 
-   { "ab+z",         "abbbbefghij",          E_RegexRtn_NoMatch,  {0, {}}              },
+   { "^ab",         "abbbbefghij",          E_RegexRtn_NoMatch,  {0, {}}              },
 };
 
 #endif
