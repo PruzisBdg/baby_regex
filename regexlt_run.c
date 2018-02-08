@@ -32,28 +32,35 @@ PRIVATE BOOL matchedRegexCh(C8 regexCh, C8 ch)
          : ch == regexCh;     // otherwise TRUE if equal
 }
 
-/* ------------------------------- matchCharsList -------------------------------------- */
+/* ------------------------------- matchCharsList --------------------------------------
 
+   Compare the S_Chars[] list 'chs' against 'in'. Return TRUE if there's a full match
+   before a '\0' or 'end'.
 
-PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 const *mustEndBy)
+   'start' should the beginning of the WHOLE input string; used to match the '^' anchor.
+*/
+PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 const *end)
 {
    C8 ch;
 
-   for(; *in <= mustEndBy; chs++, (*in)++)            // Next item on regex-list & next input char... but not past 'mustEndBy'
+   for(; *in <= end;                                        // Until defined end-of-input, which may be before '\0'.
+         (*in) += (chs->opcode == OpCode_Anchor ? 0 : 1),   // If matching an anchor then hold, else next input char.
+         chs++)                                             // Next item on regex-list
    {
-      if((ch = **in) == '\0' &&                       // End of input string? AND
-         chs->opcode != OpCode_Match)                 // have not matched all of this regex segment?
+      if((ch = **in) == '\0' &&                             // End of input string? AND
+         chs->opcode != OpCode_Match &&                     // have not matched all of this regex segment? AND
+         chs->opcode != OpCode_Anchor)                      // not on an anchor? - which may match '\0' and so is checked in case OpCode_Anchor: below
       {
-         return FALSE;                                // then fail
+         return FALSE;                                      // then failed to match all items in 'chs'
       }
-      else                                            // else process at least this char.
+      else                                                  // else process at least this char.
       {
          T_CharSegmentLen i;
 
-         switch(chs->opcode)              // --- Which kind of char container?
+         switch(chs->opcode)              // --- Which kind of char container is this chars-segment?
          {
-            case OpCode_Match:                        // End of this list (of char containers).
-               return TRUE;                           // then completely matched the container-list; Success!
+            case OpCode_Match:                              // End of this list (of char containers).
+               return TRUE;                                 // then completely matched the container-list; Success!
 
             case OpCode_Chars:            // --- Some segment of the source regex string. Compare char-by-char
 
@@ -64,21 +71,22 @@ PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 con
                      { return FALSE; }                                  // Then this path has failed
                   else if(ch == '\0')                                   // End of input string?
                      { return FALSE; }                                  // then we exhausted the input before exhausting the regex-segment; Fail
-               }                                      // else exhausted regex-segment (before end of input); Success.
-               (*in)--;                               // Backup to last input char we matched, 'for(;; chs++, (*in)++)' will re-advance ptr.
-               break;                                 // and continue through chars-list.
+               }                                            // else exhausted regex-segment (before end of input); Success.
+               (*in)--;                                     // Backup to last input char we matched, 'for(;; chs++, (*in)++)' will re-advance ptr.
+               break;                                       // and continue through chars-list.
 
             case OpCode_EscCh:            // --- A single escaped char
-               if( ch != chs->payload.esc.ch )        // Input char does not match it?
-                  { return FALSE; }                   // then fail.
+               if( ch != chs->payload.esc.ch )              // Input char does not match it?
+                  { return FALSE; }                         // then fail.
                else
-                  { break; }                          // else continue through chars list
+                  { break; }                                // else continue through chars list
 
             case OpCode_Anchor:           // --- A single anchor
-               if(*in <= start)                       // At or before start of input string? (should never be before but....)
-                  { break; }                          // then continue through chars list
+               if( (chs->payload.anchor.ch == '^' && *in <= start) ||
+                   (chs->payload.anchor.ch == '$' && **in == '\0'))                       // At or before start of input string? (should never be before but....)
+                  { break; }                                // then continue through chars list
                else
-                  { return FALSE; }                   // else fail.
+                  { return FALSE; }                         // else fail.
 
             case OpCode_Class:            // --- A character class
                if( C8bag_Contains(chs->payload.charClass, ch) == FALSE )      // Input char is not in the class?
