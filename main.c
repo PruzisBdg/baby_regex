@@ -93,6 +93,10 @@ PRIVATE S_Test const tests[] = {
    { "abc",          "",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
    { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
 
+   { "^abc$",        "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },
+   { "^abc$",        "abcd",                 E_RegexRtn_NoMatch,  {0, {}}              },
+   { "^bcd$",        "abcd",                 E_RegexRtn_NoMatch,  {0, {}}              },
+
    { ".*def",        "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
    { ".{2,}def",     "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
    { ".*de{1}f",     "abcdeefghij",          E_RegexRtn_NoMatch,  {0, {}}              },
@@ -151,7 +155,7 @@ PRIVATE S_Test const tests[] = {
    //{ "^a",             "abc",                  E_RegexRtn_Match,    {1, {{0,2}}}         },       // An empty regex matches everything
 
    //{ "^ab",         "abbbbefghij",          E_RegexRtn_Match,  {1, {{0,2}}}              },
-   { "abc$",         "abc",          E_RegexRtn_Match,  {1, {{0,3}}}              },
+   { "\\bcat",          "a cat",                     E_RegexRtn_Match,  {1, {{2,3}}}              },       // The empty string is no-match
 };
 
 #endif

@@ -69,72 +69,6 @@ PRIVATE C8 translateEscapedWhiteSpace(C8 const ** regexStr )
    }
 }
 
-/* ------------------------------ handleEscapedNonWhtSpc ---------------------------
-
-   Handle the following one-character escaped chars:
-
-      - escaped regex control chars e.g '\?', '\*'.
-            These are made into their corresponding single-char single char literals
-            ('?', '*') inside an 'OpCode_EscCh'.
-
-      - predefined character classes e.g \d == [0-9]
-            These are put into a character class which is linked to a (new) OpCode_Class.
-
-   Return FALSE if 'ch' isn't one of the above. If success, then 'idx' is advanced
-   to the next S_Chars slot, which is written to 'OpCode_Null'
-*/
-
-PRIVATE C8 const escapedChars[] = "\\|.*?{}()";
-
-PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_Chars *cb, T_InstrIdx *idx, C8 ch)
-{
-   C8 const    *preBakedClass;
-   BOOL        rtn = FALSE;                     // Until we succeed below.
-   T_InstrIdx  i = *idx;                        // Current cb[i].
-
-   if(cb[i].opcode != OpCode_Null)                                                  // Not already on an empty 'S_Chars'.
-      { cb[++i].opcode = OpCode_Null; }                                             // then advance to next slot. Make sure it's clean; it will likely be filled below.
-
-   if(strchr(escapedChars, ch) != NULL)                                             // Literal of a regex control char?
-   {
-      cb[i].opcode = OpCode_EscCh;                                                  // will go in this next cb[i]
-      cb[i].payload.esc.ch = ch;                                                    // the char s this
-      cb[++i].opcode = OpCode_Null;                                                 // Clear the next S_Chars slot (being tidy)
-      rtn = TRUE;                                                                   // and we succeeded
-   }
-   else if((preBakedClass = getCharClassByKey(ch)) != NULL)                         // else a predefined char class e.g '\w'
-   {
-      S_ParseCharClass parseClass;
-
-      if( (cb[i].payload.charClass = CharClass_New(cl)) != NULL  ) {                // Obtained a fresh empty class?, in the next cb[i]
-         classParser_Init(&parseClass);                                             // Start the private parser.
-                                                                                    // Success adding char class? (should be, the class was pre-baked by us)
-         if( classParser_AddDef(&parseClass, cb[i].payload.charClass, preBakedClass) == TRUE ) {
-            cb[i].opcode = OpCode_Class;                                            // then label wot we made.
-            cb[++i].opcode = OpCode_Null;                                           // Next instruction cleaned to 'Null'.
-            rtn = TRUE; }}                                                          // and Success.
-   }
-   *idx = i;                        // Instruction index likely advanced; write it back.
-   return rtn;
-}
-
-/* ---------------------------- isaRepeat -------------------------------------
-
-   Return TRUE if 'rgx' is a (valid) repeat operator. These are '+','*','?'
-   OR '{n,n}'.
-*/
-PRIVATE BOOL isaRepeat(C8 const *rgx)
-{
-   C8 const    **h = &rgx;                         // Input to parseRepeat()
-   C8            ch = *rgx;
-   S_RepeatSpec  rpt;                              // parseRepeat() writes result here
-
-   return
-      ch == '{'                                    // Opens a repeat-range?  e.g {3,7}
-         ? parseRepeat(&rpt, h) == E_Complete      // then try to parse the {...}. Don't use result; just return success/fail
-         : (ch == '?' || ch == '*' || ch == '+');  // Not a range; is it a single char?
-}
-
 /* ---------------------------------- nextCharsSeg ------------------------------------ */
 
 PRIVATE BOOL nextCharsSeg(S_CharsBox *cb)
@@ -170,6 +104,82 @@ PRIVATE BOOL bumpIfEmpty(S_CharsBox *cb)
       return TRUE; }
    else {
       return nextCharsSeg(cb);}
+}
+
+
+
+/* ------------------------------ handleEscapedNonWhtSpc ---------------------------
+
+   Handle the following one-character escaped chars:
+
+      - escaped regex control chars and anchors e.g '\?', '\*', '\^'.
+            These are made into their corresponding single-char single char literals
+            ('?', '*') inside an 'OpCode_EscCh'.
+
+      - predefined character classes e.g \d == [0-9]
+            These are put into a character class which is linked to a (new) OpCode_Class.
+
+   Return FALSE if 'ch' isn't one of the above. If success, then 'idx' is advanced
+   to the next S_Chars slot, which is written to 'OpCode_Null'
+*/
+
+PRIVATE C8 const escapedChars[] = "\\|.*?{}()^$";
+PRIVATE C8 const escapedAnchors[] = "b";                 // Just word boundary for now
+
+PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_Chars *cb, T_InstrIdx *idx, C8 ch)
+{
+   C8 const    *preBakedClass;
+   BOOL        rtn = FALSE;                     // Until we succeed below.
+   T_InstrIdx  i = *idx;                        // Current cb[i].
+
+   if(cb[i].opcode != OpCode_Null)                                                  // Not already on an empty 'S_Chars'.
+      { cb[++i].opcode = OpCode_Null; }                                             // then advance to next slot. Make sure it's clean; it will likely be filled below.
+
+   if(strchr(escapedChars, ch) != NULL)                                             // Literal of a regex control char?
+   {
+      cb[i].opcode = OpCode_EscCh;                                                  // will go in this next cb[i]
+      cb[i].payload.esc.ch = ch;                                                    // the char s this
+      cb[++i].opcode = OpCode_Null;                                                 // Clear the next S_Chars slot (being tidy)
+      rtn = TRUE;                                                                   // and we succeeded
+   }
+   else if(strchr(escapedAnchors, ch) != NULL)                                      // (backslashed) regex anchor?
+   {
+      cb[i].opcode = OpCode_Anchor;                                                  // will go in this next cb[i]
+      cb[i].payload.anchor.ch = ch;                                                    // the char s this
+      cb[++i].opcode = OpCode_Null;                                                 // Clear the next S_Chars slot (being tidy)
+      rtn = TRUE;                                                                   // and we succeeded
+   }
+   else if((preBakedClass = getCharClassByKey(ch)) != NULL)                         // else a predefined char class e.g '\w'
+   {
+      S_ParseCharClass parseClass;
+
+      if( (cb[i].payload.charClass = CharClass_New(cl)) != NULL  ) {                // Obtained a fresh empty class?, in the next cb[i]
+         classParser_Init(&parseClass);                                             // Start the private parser.
+                                                                                    // Success adding char class? (should be, the class was pre-baked by us)
+         if( classParser_AddDef(&parseClass, cb[i].payload.charClass, preBakedClass) == TRUE ) {
+            cb[i].opcode = OpCode_Class;                                            // then label wot we made.
+            cb[++i].opcode = OpCode_Null;                                           // Next instruction cleaned to 'Null'.
+            rtn = TRUE; }}                                                          // and Success.
+   }
+   *idx = i;                        // Instruction index likely advanced; write it back.
+   return rtn;
+}
+
+/* ---------------------------- isaRepeat -------------------------------------
+
+   Return TRUE if 'rgx' is a (valid) repeat operator. These are '+','*','?'
+   OR '{n,n}'.
+*/
+PRIVATE BOOL isaRepeat(C8 const *rgx)
+{
+   C8 const    **h = &rgx;                         // Input to parseRepeat()
+   C8            ch = *rgx;
+   S_RepeatSpec  rpt;                              // parseRepeat() writes result here
+
+   return
+      ch == '{'                                    // Opens a repeat-range?  e.g {3,7}
+         ? parseRepeat(&rpt, h) == E_Complete      // then try to parse the {...}. Don't use result; just return success/fail
+         : (ch == '?' || ch == '*' || ch == '+');  // Not a range; is it a single char?
 }
 
 /* ----------------------------- fillCharBox ---------------------------------

@@ -32,6 +32,18 @@ PRIVATE BOOL matchedRegexCh(C8 regexCh, C8 ch)
          : ch == regexCh;     // otherwise TRUE if equal
 }
 
+
+PRIVATE BOOL startOfWord(C8 const *src)
+{
+   return isspace(*(src-1)) && !isspace(*src);
+}
+
+PRIVATE BOOL endOfWord(C8 const *src)
+{
+   return !isspace(*(src-1)) && isspace(*src);
+}
+
+
 /* ------------------------------- matchCharsList --------------------------------------
 
    Compare the S_Chars[] list 'chs' against 'in'. Return TRUE if there's a full match
@@ -82,8 +94,9 @@ PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 con
                   { break; }                                // else continue through chars list
 
             case OpCode_Anchor:           // --- A single anchor
-               if( (chs->payload.anchor.ch == '^' && *in <= start) ||
-                   (chs->payload.anchor.ch == '$' && **in == '\0'))                       // At or before start of input string? (should never be before but....)
+               if( (chs->payload.anchor.ch == '^' && *in <= start) ||      // Start anchor AND at or before start of input string? OR (should never be before but....)
+                   (chs->payload.anchor.ch == '$' && **in == '\0') ||      // End anchor AND at end of string? OR
+                    chs->payload.anchor.ch == 'b' && (startOfWord(*in) || endOfWord(*in)))
                   { break; }                                // then continue through chars list
                else
                   { return FALSE; }                         // else fail.
