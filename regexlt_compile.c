@@ -126,42 +126,39 @@ PRIVATE BOOL bumpIfEmpty(S_CharsBox *cb)
 PRIVATE C8 const escapedChars[] = "\\|.*?{}()^$";
 PRIVATE C8 const escapedAnchors[] = "b";                 // Just word boundary for now
 
-PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_Chars *cb, T_InstrIdx *idx, C8 ch)
+PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_CharsBox *cb, C8 ch)
 {
    C8 const    *preBakedClass;
-   BOOL        rtn = FALSE;                     // Until we succeed below.
-   T_InstrIdx  i = *idx;                        // Current cb[i].
+   BOOL        rtn = FALSE;                           // Until we succeed below.
 
-   if(cb[i].opcode != OpCode_Null)                                                  // Not already on an empty 'S_Chars'.
-      { cb[++i].opcode = OpCode_Null; }                                             // then advance to next slot. Make sure it's clean; it will likely be filled below.
+   S_Chars *sg = cb->segs;
 
-   if(strchr(escapedChars, ch) != NULL)                                             // Literal of a regex control char?
+   if(sg[cb->put].opcode != OpCode_Null)                                         // Not already on an empty 'S_Chars'.
+      { wrNextSeg(cb, OpCode_Null); }                                            // then advance to next slot. Make sure it's clean; it will likely be filled below.
+
+   if(strchr(escapedChars, ch) != NULL)                                          // Literal of a regex control char?
    {
-      cb[i].opcode = OpCode_EscCh;                                                  // will go in this next cb[i]
-      cb[i].payload.esc.ch = ch;                                                    // the char s this
-      cb[++i].opcode = OpCode_Null;                                                 // Clear the next S_Chars slot (being tidy)
-      rtn = TRUE;                                                                   // and we succeeded
+      sg[cb->put].opcode = OpCode_EscCh;                                         // will go in this next sg[cb->put]
+      sg[cb->put].payload.esc.ch = ch;                                           // the char s this
+      rtn = wrNextSeg(cb, OpCode_Null);                                          // Clear the next S_Chars slot (being tidy)
    }
-   else if(strchr(escapedAnchors, ch) != NULL)                                      // (backslashed) regex anchor?
+   else if(strchr(escapedAnchors, ch) != NULL)                                   // (backslashed) regex anchor?
    {
-      cb[i].opcode = OpCode_Anchor;                                                  // will go in this next cb[i]
-      cb[i].payload.anchor.ch = ch;                                                    // the char s this
-      cb[++i].opcode = OpCode_Null;                                                 // Clear the next S_Chars slot (being tidy)
-      rtn = TRUE;                                                                   // and we succeeded
+      sg[cb->put].opcode = OpCode_Anchor;                                        // will go in this next sg[cb->put]
+      sg[cb->put].payload.anchor.ch = ch;                                        // the char s this
+      rtn = wrNextSeg(cb, OpCode_Null);                                          // Clear the next S_Chars slot (being tidy)
    }
-   else if((preBakedClass = getCharClassByKey(ch)) != NULL)                         // else a predefined char class e.g '\w'
+   else if((preBakedClass = getCharClassByKey(ch)) != NULL)                      // else a predefined char class e.g '\w'
    {
       S_ParseCharClass parseClass;
 
-      if( (cb[i].payload.charClass = CharClass_New(cl)) != NULL  ) {                // Obtained a fresh empty class?, in the next cb[i]
-         classParser_Init(&parseClass);                                             // Start the private parser.
-                                                                                    // Success adding char class? (should be, the class was pre-baked by us)
-         if( classParser_AddDef(&parseClass, cb[i].payload.charClass, preBakedClass) == TRUE ) {
-            cb[i].opcode = OpCode_Class;                                            // then label wot we made.
-            cb[++i].opcode = OpCode_Null;                                           // Next instruction cleaned to 'Null'.
-            rtn = TRUE; }}                                                          // and Success.
+      if( (sg[cb->put].payload.charClass = CharClass_New(cl)) != NULL  ) {       // Obtained a fresh empty class?, in the next sg[cb->put]
+         classParser_Init(&parseClass);                                          // Start the private parser.
+                                                                                 // Success adding char class? (should be, the class was pre-baked by us)
+         if( classParser_AddDef(&parseClass, sg[cb->put].payload.charClass, preBakedClass) == TRUE ) {
+            sg[cb->put].opcode = OpCode_Class;                                   // then label wot we made.
+            rtn = wrNextSeg(cb, OpCode_Null); }}                                 // Clear the next S_Chars slot (being tidy). Return success or fail.
    }
-   *idx = i;                        // Instruction index likely advanced; write it back.
    return rtn;
 }
 
@@ -297,7 +294,8 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                      }                                               // ...the escape, e.g '\d' will go into its own Box, following a '_Split' which holds it's repeat count..
                      else                                            // else we add to the current Chars-Box
                      {
-                        if( handleEscapedNonWhtSpc(cl, sg, &cb->put, *(++(*regexStr)) ) == FALSE)   // Was not a legal escaped thingy?
+//                        if( handleEscapedNonWhtSpc(cl, sg, &cb->put, *(++(*regexStr)) ) == FALSE)   // Was not a legal escaped thingy?
+                        if( handleEscapedNonWhtSpc(cl, cb, *(++(*regexStr)) ) == FALSE)   // Was not a legal escaped thingy?
                            { return FALSE; }                         // then parse fail.
                         else
                            { break; }                                // else success; the escaped thingy is added to current Chars-Box.
