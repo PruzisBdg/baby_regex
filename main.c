@@ -74,7 +74,7 @@ typedef struct {
 } S_Test;
 
 
-#if 0
+#if 1
 PRIVATE RegexLT_S_Cfg cfg = {
    .getMem        = getMemCleared,
    .free          = myFree,
@@ -94,8 +94,14 @@ PRIVATE S_Test const tests[] = {
    { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
 
    { "^abc$",        "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },
+#if 1
    { "^abc$",        "abcd",                 E_RegexRtn_NoMatch,  {0, {}}              },
    { "^bcd$",        "abcd",                 E_RegexRtn_NoMatch,  {0, {}}              },
+
+   // Word boundary (\b)
+   { "\\bcat\\b",       "cat",               E_RegexRtn_Match,    {1, {{0,3}}}         },
+   { "\\bcat",          "a cat",             E_RegexRtn_Match,    {1, {{2,3}}}         },
+   { "\\bcat\\d",       "acat1 cat2",        E_RegexRtn_Match,    {1, {{6,4}}}         },
 
    { ".*def",        "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
    { ".{2,}def",     "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
@@ -134,6 +140,7 @@ PRIVATE S_Test const tests[] = {
    { "\\(\\d{3}\\)[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,14}}}  },
    { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
    { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "414-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,12}}}  },
+#endif
 };
 
 #else
@@ -153,9 +160,9 @@ PRIVATE S_Test const tests[] = {
    //{ "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
 
    //{ "^a",             "abc",                  E_RegexRtn_Match,    {1, {{0,2}}}         },       // An empty regex matches everything
+//   { "\\bcat\\b",       "cat",               E_RegexRtn_Match,    {1, {{0,3}}}         },
+   { "abc",          "",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
 
-   //{ "^ab",         "abbbbefghij",          E_RegexRtn_Match,  {1, {{0,2}}}              },
-   { "\\bcat",          "a cat",                     E_RegexRtn_Match,  {1, {{2,3}}}              },       // The empty string is no-match
 };
 
 #endif
