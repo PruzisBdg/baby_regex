@@ -32,17 +32,24 @@ PRIVATE BOOL matchedRegexCh(C8 regexCh, C8 ch)
          : ch == regexCh;     // otherwise TRUE if equal
 }
 
+/* ------------------------------------ wordBoundary -----------------------------------------
 
-PRIVATE BOOL startOfWord(C8 const *src)
+   Return TRUE if 'src' is 1st char of a word OR if 'src' is the 1st char AFTER a word. This
+   includes start and end of string. 'start' is the start of string.
+*/
+
+PRIVATE BOOL wordBoundary(C8 const *start, C8 const *src)
 {
-   return isspace(*(src-1)) && !isspace(*src);
+   #define _isChar(ch) (!isspace(ch))
+   return
+      src == start                                             // 1st char of string?
+         ? _isChar(*src)                                       // yes, if it's a char, i.e non-whitespace
+         : (*src == '\0'                                       // else end-of-string? (AND the string has at least one char, else 'src' ==  'start' above)
+               ? _isChar(*(src-1))                             // yes if previous ch is a char (non-whitespace)
+               : (                                             // else if neither start nor end of string?
+                     (isspace(*(src-1)) && _isChar(*src)) ||   // 'src' is a char AND previous is whitespace? OR
+                     (_isChar(*(src-1)) && isspace(*src))));   // 'src' is whitespace AND previous is a char?
 }
-
-PRIVATE BOOL endOfWord(C8 const *src)
-{
-   return !isspace(*(src-1)) && isspace(*src);
-}
-
 
 /* ------------------------------- matchCharsList --------------------------------------
 
@@ -96,7 +103,7 @@ PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 con
             case OpCode_Anchor:           // --- A single anchor
                if( (chs->payload.anchor.ch == '^' && *in <= start) ||      // Start anchor AND at or before start of input string? OR (should never be before but....)
                    (chs->payload.anchor.ch == '$' && **in == '\0') ||      // End anchor AND at end of string? OR
-                    chs->payload.anchor.ch == 'b' && (startOfWord(*in) || endOfWord(*in)))
+                    chs->payload.anchor.ch == 'b' && wordBoundary(start, *in))
                   { break; }                                // then continue through chars list
                else
                   { return FALSE; }                         // else fail.
@@ -573,15 +580,19 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                                  : _StopAtMismatch) );
                      }
                   }
-                  else
+                  else                                                           // else failed to match this 1st Chars_Box?
                   {
-                     if(sp >= mustEnd ) {                                        // else didn't match - because we reached limit on length of input string?
-                        rtn = E_RegexRtn_BadInput;                               // then we are done running the program.
+                     if(*sp == '\0') {                                           // Hit end-of-string too?
+                        rtn = E_RegexRtn_NoMatch;                                // then didn't even get a leading match. We are done.
                         goto CleanupAndRtn;
                      }
-                     else if( *(cBoxStart+1) != '\0')                                   // Advance... there's at least one more char in the input string?
-                     {
-                        addR = TRUE;                                             // then add a new thread to 'next' applying existing CharBox start at this new char.
+                     else if(sp >= mustEnd ) {                                   // else reached limit on length of input string?
+                        rtn = E_RegexRtn_BadInput;                               // then input was too long; we are done.
+                        goto CleanupAndRtn;
+                     }
+                     else if( *(cBoxStart+1) != '\0')                            // else if there's at least one more char in the input string?...
+                     {                                                           // ...then advance to this char retry the existing CharsBox
+                        addR = TRUE;                                             // starting at this new char.
                         addThread( next,
                            newThread( pc, cBoxStart+1, loopCnt, gs, &dfltMatchCfg,
                                        matchedMinimal ? _StopAtMismatch : _EatMismatches));
