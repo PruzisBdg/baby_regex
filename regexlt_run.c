@@ -37,7 +37,6 @@ PRIVATE BOOL matchedRegexCh(C8 regexCh, C8 ch)
    Return TRUE if 'src' is 1st char of a word OR if 'src' is the 1st char AFTER a word. This
    includes start and end of string. 'start' is the start of string.
 */
-
 PRIVATE BOOL wordBoundary(C8 const *start, C8 const *src)
 {
    #define _isChar(ch) (!isspace(ch))
@@ -51,12 +50,38 @@ PRIVATE BOOL wordBoundary(C8 const *start, C8 const *src)
                      (_isChar(*(src-1)) && isspace(*src))));   // 'src' is whitespace AND previous is a char?
 }
 
+/* ------------------------------------ notaWordBoundary -----------------------------------------
+
+   Return TRUE if 'src' is a char with a char on either side, or the converse, a whitespace with
+   whitespace either side.
+
+   Note that notaWordBoundary() is not the converse of wordBoundary(); there are sequences for which
+   neither wordBoundary() nor notaWordBoundary() are true. Although '\b' are '\B' are the converse
+   of each other, the way matchCharsList() works means !wordBoundary() != wordBoundary().
+*/
+PRIVATE BOOL notaWordBoundary(C8 const *start, C8 const *src)
+{
+   #define _isChar(ch) (!isspace(ch))
+   return
+      src == start                                             // 1st char of string?
+         ? isspace(*src) && isspace(*(src+1))                  // yes, if first 2 chars are whitespace.
+         : (*src == '\0'                                       // else end-of-string? (AND the string has at least one char, else 'src' ==  'start' above)
+               ? isspace(*(src-1))                             // yes if previous ch is whitespace
+               : (                                             // else if neither start nor end of string?
+                                                               // <spc><spc><spc> OR <spc><spc><\0> OR...
+                     (isspace(*(src-1)) && isspace(*src) && (isspace(*(src+1)) || *(src+1) == '\0')   ) ||
+                                                               // <char><char><char> OR <char><char><\0>
+                     (_isChar(*(src-1)) && _isChar(*src) && (_isChar(*(src+1)) || *(src+1) == '\0')  )));   // 'src' is whitespace AND previous is a char?
+}
+
 /* ------------------------------- matchCharsList --------------------------------------
 
    Compare the S_Chars[] list 'chs' against 'in'. Return TRUE if there's a full match
    before a '\0' or 'end'.
 
    'start' should the beginning of the WHOLE input string; used to match the '^' anchor.
+
+    Returns with 'in' at the 1st char AFTER the segment which matches 'chs'.
 */
 PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 const *end)
 {
@@ -101,9 +126,10 @@ PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 con
                   { break; }                                // else continue through chars list
 
             case OpCode_Anchor:           // --- A single anchor
-               if( (chs->payload.anchor.ch == '^' && *in <= start) ||      // Start anchor AND at or before start of input string? OR (should never be before but....)
-                   (chs->payload.anchor.ch == '$' && **in == '\0') ||      // End anchor AND at end of string? OR
-                    chs->payload.anchor.ch == 'b' && wordBoundary(start, *in))
+               if( (chs->payload.anchor.ch == '^' && *in <= start) ||               // Start anchor AND at or before start of input string? OR (should never be before but....)
+                   (chs->payload.anchor.ch == '$' && **in == '\0') ||               // End anchor AND at end of string? OR
+                    chs->payload.anchor.ch == 'b' && wordBoundary(start, *in) ||    // Word boundary? OR
+                    chs->payload.anchor.ch == 'B' && notaWordBoundary(start, *in))  // Not a word boundary?
                   { break; }                                // then continue through chars list
                else
                   { return FALSE; }                         // else fail.
@@ -459,7 +485,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
       Because no instruction splits into more than 2 paths, the tree/threads for executing
       'prog' can be no wider than 'prog' is long, plus 1 for the root thread.
    */
-   T_ThrdListIdx len = prog->put + 3;     // Add 3 to be safe.
+   T_ThrdListIdx len = prog->put + 13;     // Add 3 to be safe.
    curr = threadList(len);
    next = threadList(len);
 

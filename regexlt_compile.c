@@ -124,7 +124,7 @@ PRIVATE BOOL bumpIfEmpty(S_CharsBox *cb)
 */
 
 PRIVATE C8 const escapedChars[] = "\\|.*?{}()^$";
-PRIVATE C8 const escapedAnchors[] = "b";                 // Just word boundary for now
+PRIVATE C8 const escapedAnchors[] = "bB";                // Just word boundaries for now
 
 PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_CharsBox *cb, C8 ch)
 {
@@ -467,6 +467,18 @@ PRIVATE void addFinalMatch(S_Program *p)
    p->instrs.put++;
 }
 
+PRIVATE S16 prevCBox(S_Program *p)
+{
+   T_InstrIdx i;
+
+   for(i = p->instrs.put; i; i--)
+   {
+      if(p->instrs.buf[i].opcode == OpCode_CharBox )
+         { break; }
+   }
+   return i - p->instrs.put;
+}
+
 /* ------------------------------ attachCharBox --------------------------------------
 
    If 'cb' is a non-empty chars-list, then append a 'CharBox instruction to 'p',
@@ -581,7 +593,8 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                addSplit(prog, +1, +3);                   // Either try next repeatedly or skip.
                attachCharBox(prog,                       // This is 'next'.
                   lookaheadFor_GroupClose(&cb, rgxP));   // If ')' after the '*' then close current subgroup at the CharBox.
-               addJump(prog, -2);                        // then back to retry or move on.
+               //addJump(prog, -2);                        // then back to retry or move on.
+               addJump(prog, prevCBox(prog));
                //leftZero = TRUE;
                rgxP++;
                break;
