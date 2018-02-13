@@ -485,7 +485,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
       Because no instruction splits into more than 2 paths, the tree/threads for executing
       'prog' can be no wider than 'prog' is long, plus 1 for the root thread.
    */
-   T_ThrdListIdx len = prog->put + 13;     // Add 3 to be safe.
+   T_ThrdListIdx len = prog->put + 23;     // Add 3 to be safe.
    curr = threadList(len);
    next = threadList(len);
 

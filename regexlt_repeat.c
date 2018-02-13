@@ -11,6 +11,7 @@
 #include <stdarg.h>
 #include "libs_support.h"
 #include "util.h"
+#include "arith.h"
 #include "regexlt_private.h"
 
 /* ----------------------------- regexlt_parseRepeat ----------------------------------

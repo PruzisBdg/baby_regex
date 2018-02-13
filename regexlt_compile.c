@@ -11,6 +11,7 @@
 #include <stdarg.h>
 #include "libs_support.h"
 #include "util.h"
+#include "arith.h"
 #include "regexlt_private.h"
 
 // Private to RegexLT_'.
@@ -590,11 +591,15 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                break;
 
             case '*':                                 // --- Zero or more
-               addSplit(prog, +1, +3);                   // Either try next repeatedly or skip.
-               attachCharBox(prog,                       // This is 'next'.
-                  lookaheadFor_GroupClose(&cb, rgxP));   // If ')' after the '*' then close current subgroup at the CharBox.
-               //addJump(prog, -2);                        // then back to retry or move on.
-               addJump(prog, prevCBox(prog));
+               if(cb.len == 0)                              // No CBox to add? (was closed out by a preceding group)
+                  { addSplit(prog, +1, +2); }               // Either try next JMP or skip it
+               else {                                       // else there is a CBox
+                  addSplit(prog, +1, +3);                   // Either try that CBox repeatedly or skip past the JMP which is beyond it
+                  attachCharBox(prog,                       // This is 'next'.
+                     lookaheadFor_GroupClose(&cb, rgxP)); } // If ')' after the '*' then close current subgroup at the CharBox.
+
+               addJump(prog, MinS16(-2, prevCBox(prog)));   // then JMP back to retry the previous CBox (but not the one we added, which is '-1')
+               //addJump(prog, prevCBox(prog));
                //leftZero = TRUE;
                rgxP++;
                break;
@@ -689,7 +694,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                                           '.*def'  vs 'abcdefg'
                      Here the wildcard matches 'abc' and the match starts at 'a', not 'd'.
                   */
-                  if( (prog->instrs.put == 0 && *segStart != '.') ||    // 1st char AND it's not a wildcard? OR
+                  if( (prog->instrs.put == 0 && *segStart != '.' && *segStart != '^') ||    // 1st char AND it's not a wildcard or an anchor? OR
                       (
                         rightOperator(segStart) == '|' &&         // operator to right is alternation? AND...
                         firstOp == '|' &&                         // ... this '|' was not preceded by any different operator? AND

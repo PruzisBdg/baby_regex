@@ -74,7 +74,7 @@ typedef struct {
 } S_Test;
 
 
-#if 0
+#if 1
 PRIVATE RegexLT_S_Cfg cfg = {
    .getMem        = getMemCleared,
    .free          = myFree,
@@ -94,7 +94,6 @@ PRIVATE S_Test const tests[] = {
    { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
 
    { "^abc$",        "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },
-#if 1
    { "^abc$",        "abcd",                 E_RegexRtn_NoMatch,  {0, {}}              },
    { "^bcd$",        "abcd",                 E_RegexRtn_NoMatch,  {0, {}}              },
 
@@ -140,7 +139,6 @@ PRIVATE S_Test const tests[] = {
    { "\\(\\d{3}\\)[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,14}}}  },
    { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
    { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "414-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,12}}}  },
-#endif
 };
 
 #else
@@ -155,7 +153,8 @@ PRIVATE RegexLT_S_Cfg cfg = {
 };
 
 PRIVATE S_Test const tests[] = {
-   { "^(a+)*b",          "aaac",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
+   { "^(a+)*b",          "aaab",                     E_RegexRtn_Match,  {2, {{0,4},{0,3}}}              },       // The empty string is no-match
+//   { ".*def",        "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
 };
 
 #endif
@@ -409,15 +408,15 @@ int main()
 //   printf("Out: %s\r\n", out);
 //   return 1;
 
-   U8 c;
-   for(c = 0; c < RECORDS_IN(tests); c++)
+   U8 c, fails;
+   for(c = 0, fails = 0; c < RECORDS_IN(tests); c++)
    {
       printf("%-2d: ", c);
 
       if( runOneTest_PrintOneLine(&tests[c]) == FALSE)
-      {
-      }
+         { fails++; }
    }
+   if(fails == 0) { printf("\r\n----- All Passed -----\r\n"); } else { printf("\r\n------- %d Fails --------", fails); }
    return 1;
 }
 
