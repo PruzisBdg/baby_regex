@@ -471,6 +471,30 @@ PRIVATE C8 const * prntRpts( S_RepeatSpec const *r, T_RepeatCnt cnt )
    return buf;
 }
 
+PRIVATE BOOL threadsEqual(S_Thread const *a, S_Thread const *b)
+{
+   return
+      a->pc == b->pc &&
+      a->runCnt == b->runCnt;
+}
+
+PRIVATE BOOL foundDuplicate(S_ThreadList *tl, T_ThrdListIdx ti)
+{
+   if(ti > 0)
+   {
+      U8 c;
+      for(c = ti; c; c--)
+      {
+         if( threadsEqual(&tl->ts[ti], &tl->ts[c-1]) )
+         {
+            printf("Duplicate found ---------- %d\r\n", ti);
+            return TRUE;
+         }
+      }
+   }
+   return FALSE;
+}
+
 /* ----------------------------------- runOnce ---------------------------------
 
    Run the compiled regex 'prog' over 'str' until 'Match', meaning the regex was exhausted,
@@ -769,6 +793,11 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                continue;
 
             case OpCode_Split:                        // --- Split
+               if( foundDuplicate(curr, ti))
+               {
+                  continue;
+               }
+
                /* Add both forks to 'curr' thread; both will execute rightaway in this loop.
 
                   But... if this 'Split' instruction contains repeat-counts conditionals, then
