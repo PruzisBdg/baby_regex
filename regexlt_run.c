@@ -200,7 +200,7 @@ PRIVATE BOOL copyInMatch(RegexLT_S_MatchList *ml, S_Match const *m, C8 const *st
 typedef struct {
     T_InstrIdx  pc;              // Program counter
     C8 const   *sp;              // Source (input string) pointer.
-    T_RepeatCnt runCnt;          // A run-count for the character set in this thread. For repeats e.g (Ha){3}
+    T_RepeatCnt rptCnt;          // A run-count for the character set in this thread. For repeats e.g (Ha){3}
     C8 const   *subgroupStart;   // If a subgroup was opened in this thread, then this is the 1st char of the subgroup.
     S_MatchList matches;         // Matches which this thread has found - so far.
     BOOL        eatMismatches;   // Eat (leading) mismatches), at the start of the regex
@@ -310,7 +310,7 @@ PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 c
 
    t.pc = pc;                          // Program counter
    t.sp = src;                         // input string read at...
-   t.runCnt = rpts;                    // Repeats of this thread so far.
+   t.rptCnt = rpts;                    // Repeats of this thread so far.
    t.subgroupStart = groupStart;       // If this thread starts a sub-group.
    t.eatMismatches = eatMismatches;    // if this thread eats leading mismatches.
 
@@ -471,28 +471,35 @@ PRIVATE C8 const * prntRpts( S_RepeatSpec const *r, T_RepeatCnt cnt )
    return buf;
 }
 
-PRIVATE BOOL threadsEqual(S_Thread const *a, S_Thread const *b)
+/* --------------------------------- threadsEquivalent ------------------------------------
+
+   'a' and 'b' in a thread list are equivalent if they are at the same instruction (pc =
+   program counter" and have the same repeat count.
+*/
+PRIVATE BOOL threadsEquivalent(S_Thread const *a, S_Thread const *b)
 {
    return
       a->pc == b->pc &&
-      a->runCnt == b->runCnt;
+      a->rptCnt == b->rptCnt;
 }
 
-PRIVATE BOOL foundDuplicate(S_ThreadList *tl, T_ThrdListIdx ti)
+/* ------------------------------------ foundDuplicate ------------------------------------
+
+    Return TRUE if there's an (earlier) duplicate of thread [ti] in 'thread-list 'tl'. A duplicate
+    is a thread at the same instruction and with the same repeat-count as 'ti'.
+
+    Duplicate threads can happen with regex which have explosive quantifiers. A duplicate means
+    that the two threads have reached the same place by two different routes. There's no point
+    in propagating both; they will take the same same path.
+*/
+PRIVATE BOOL foundEarlierDuplicate(S_ThreadList *tl, T_ThrdListIdx ti)
 {
-   if(ti > 0)
-   {
-      U8 c;
-      for(c = ti; c; c--)
-      {
-         if( threadsEqual(&tl->ts[ti], &tl->ts[c-1]) )
-         {
+   if(ti > 0) {                                                      // At least one earlier thread in 'tl'?
+      for(U8 c = ti; c; c--) {                                       // From the latest thread (-1) to the 1st
+         if( threadsEquivalent(&tl->ts[ti], &tl->ts[c-1]) ) {        // This earlier thread is equivalent to the latest?
             printf("Duplicate found ---------- %d\r\n", ti);
-            return TRUE;
-         }
-      }
-   }
-   return FALSE;
+            return TRUE; }}}                                         // then TRUE.
+   return FALSE;                    // else no equivalent found -> FALSE.
 }
 
 /* ----------------------------------- runOnce ---------------------------------
@@ -570,7 +577,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
          pc = thrd->pc;                                                       // The program counter and...
          sp = thrd->sp;                                                       // ..it's read pointer (to the source string)
          gs = thrd->subgroupStart;
-         loopCnt = thrd->runCnt;                                              // Read the thread repeat count, to be propagated (below) and tested by 'Split' (below).
+         loopCnt = thrd->rptCnt;                                              // Read the thread repeat count, to be propagated (below) and tested by 'Split' (below).
 
  ReloadInstuction:
          ip = &prog->buf[pc];                                                 // (Address of) the instruction referenced by 'pc'
@@ -793,51 +800,51 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                continue;
 
             case OpCode_Split:                        // --- Split
-               if( foundDuplicate(curr, ti))
+               //if( !foundEarlierDuplicate(curr, ti))
+               if(1)
                {
+                  /* Add both forks to 'curr' thread; both will execute rightaway in this loop.
+
+                     But... if this 'Split' instruction contains repeat-counts conditionals, then
+                     continue on a loop or down a branch only if relevant the count criterion is met.
+
+                     The left fork is a loopback thru the current chars-block, and continues
+                     until 'max-repeats'. The right for is a jump forward to the next char
+                     block, and doesn't happen until min-repeats.
+                  */
+
+                  addL = FALSE; addR = FALSE; cput = curr->put;
+
+                  if(!ip->repeats.valid || loopCnt < ip->repeats.max)             // Unconditional? OR is conditional AND have not tried max-repeats of current chars-block?
+                  {
+                     dfltMatchCfg.clone = FALSE;
+                     addThread(curr, newThread(ip->left, sp, ip->left < pc ? loopCnt+1 : loopCnt, gs, &dfltMatchCfg, thrd->eatMismatches));
+                     addL = TRUE;
+                  }   // then this thread loops back to the current chars-block.
+
+                  if(!ip->repeats.valid || loopCnt >= ip->repeats.min)            // Unconditional? OR is conditional AND have tried at least min-repeats of current chars-block.
+                  {
+                     dfltMatchCfg.clone = TRUE;
+                     addThread(curr, newThread(ip->right, sp, 0, gs, &dfltMatchCfg, thrd->eatMismatches));
+                     addR = TRUE;
+                  }  // then will now also attempt to match the next text block.
+                                                                        dbgPrint("   %d: split(%d %d) @ %s    [%d +>  %s,%s]   \t\t%s%s\r\n",
+                                                                           pc, ip->left, ip->right,
+                                                                           printTriad(sp),
+                                                                           ti,
+                                                                           prntAddThrd(bufL, addL==FALSE, cput, ip->left),
+                                                                           prntAddThrd(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, ip->right),
+                                                                           prntRpts(&ip->repeats, loopCnt),
+                                                                           ip->left < pc ? "++" : "");
+
+                  /* Same as for JMP above; if this 'Split' is followed by a 'Match', then one of the splits must
+                     be a backward jump. This implies we have matched every part of the regex at least once.
+                  */
+                  if( prog->buf[pc+1].opcode == OpCode_Match)
+                     { matchedMinimal = TRUE; }
                   continue;
                }
 
-               /* Add both forks to 'curr' thread; both will execute rightaway in this loop.
-
-                  But... if this 'Split' instruction contains repeat-counts conditionals, then
-                  continue on a loop or down a branch only if relevant the count criterion is met.
-
-                  The left fork is a loopback thru the current chars-block, and continues
-                  until 'max-repeats'. The right for is a jump forward to the next char
-                  block, and doesn't happen until min-repeats.
-               */
-
-               addL = FALSE; addR = FALSE; cput = curr->put;
-
-               if(!ip->repeats.valid || loopCnt < ip->repeats.max)             // Unconditional? OR is conditional AND have not tried max-repeats of current chars-block?
-               {
-                  dfltMatchCfg.clone = FALSE;
-                  addThread(curr, newThread(ip->left, sp, ip->left < pc ? loopCnt+1 : loopCnt, gs, &dfltMatchCfg, thrd->eatMismatches));
-                  addL = TRUE;
-               }   // then this thread loops back to the current chars-block.
-
-               if(!ip->repeats.valid || loopCnt >= ip->repeats.min)            // Unconditional? OR is conditional AND have tried at least min-repeats of current chars-block.
-               {
-                  dfltMatchCfg.clone = TRUE;
-                  addThread(curr, newThread(ip->right, sp, 0, gs, &dfltMatchCfg, thrd->eatMismatches));
-                  addR = TRUE;
-               }  // then will now also attempt to match the next text block.
-                                                                     dbgPrint("   %d: split(%d %d) @ %s    [%d +>  %s,%s]   \t\t%s%s\r\n",
-                                                                        pc, ip->left, ip->right,
-                                                                        printTriad(sp),
-                                                                        ti,
-                                                                        prntAddThrd(bufL, addL==FALSE, cput, ip->left),
-                                                                        prntAddThrd(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, ip->right),
-                                                                        prntRpts(&ip->repeats, loopCnt),
-                                                                        ip->left < pc ? "++" : "");
-
-               /* Same as for JMP above; if this 'Split' is followed by a 'Match', then one of the splits must
-                  be a backward jump. This implies we have matched every part of the regex at least once.
-               */
-               if( prog->buf[pc+1].opcode == OpCode_Match)
-                  { matchedMinimal = TRUE; }
-               continue;
 
          }     //switch(ip->opcode )
       }     // for(ti = 0; ti < curr->put; ti++)

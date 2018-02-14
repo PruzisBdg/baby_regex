@@ -153,8 +153,8 @@ PRIVATE RegexLT_S_Cfg cfg = {
 };
 
 PRIVATE S_Test const tests[] = {
-   { "^(a+)*b",          "aaab",                     E_RegexRtn_Match,  {2, {{0,4},{0,3}}}              },       // The empty string is no-match
-//   { ".*def",        "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
+//   { "^(a+)*b",          "aaab",                     E_RegexRtn_Match,  {2, {{0,4},{0,3}}}              },       // The empty string is no-match
+   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
 };
 
 #endif
@@ -187,7 +187,8 @@ PRIVATE S_TestRightOperator const rightOpTests[] = {
    { "a\\+",    '$' },
    { "a\\?",    '$' },
    { "a\\*",    '$' },
-   { "a\\{",    '$' },
+   { "a\\{",    '$' },               if( !foundEarlierDuplicate(curr, ti))
+
 
    // Post operator captures previous char.
    { "ab+",     'E' },
@@ -351,7 +352,7 @@ PRIVATE BOOL runOneTest_PrintOneLine(S_Test const *t)
          {
             RegexLT_PrintMatchList_OnOneLine(ml);                                   // then print matches
             printf("\r\n");                                                         // Drop a line, for the next test, but...
-            matchesOK(ml, &t->matchChk);                                            // if matches don't agree with those listed in the test, print the discrepancy
+            return matchesOK(ml, &t->matchChk);                                            // if matches don't agree with those listed in the test, print the discrepancy
          }
          else                                                                       // else result code was something other than 'match'
          {
@@ -360,7 +361,6 @@ PRIVATE BOOL runOneTest_PrintOneLine(S_Test const *t)
          RegexLT_FreeMatches(ml);                                                   // Done with matches.
          return TRUE;                                                               // Test passed
       }
-
    }
    else
    {
@@ -416,7 +416,7 @@ int main()
       if( runOneTest_PrintOneLine(&tests[c]) == FALSE)
          { fails++; }
    }
-   if(fails == 0) { printf("\r\n----- All Passed -----\r\n"); } else { printf("\r\n------- %d Fails --------", fails); }
+   if(fails == 0) { printf("\r\n----- All Passed -----\r\n"); } else { printf("\r\n------- %d Fail(s) --------\r\n", fails); }
    return 1;
 }
 
