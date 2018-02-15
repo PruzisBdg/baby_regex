@@ -254,7 +254,16 @@ PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxC
                size_t len = strlen(listClass);                                         // We have these many
 
                if(charCnt + len + 2 > maxChars)                                        // No room to add e.g '[12345]'?
-                  {  goto printCBox_Done; }                                            // then quit with what we printed so far.
+               {
+                  if(maxChars > charCnt+3)
+                  {
+                     listClass[maxChars-charCnt] = '\0';
+                     sprintf(out, "[%s..", listClass);                                     // else append to 'out'
+                     charCnt += (len + 3);                                                // We added class chars plus brackets.
+                     out += (len+3);
+                  }
+                  goto printCBox_Done;                                                 // then quit with what we printed so far.
+               }
                else
                {
                   sprintf(out, "[%s]", listClass);                                     // else append to 'out'

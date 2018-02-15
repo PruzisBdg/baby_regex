@@ -471,6 +471,24 @@ PRIVATE C8 const * prntRpts( S_RepeatSpec const *r, T_RepeatCnt cnt )
    return buf;
 }
 
+PRIVATE void sprntMatches(C8 *buf, S_MatchList const *ml)
+{
+   C8 b1[10];
+   buf[0] = '\0';
+   for(U8 c = 0; c < ml->put; c++)
+   {
+      sprintf(b1, "[%d %d] ", ml->ms[c].start, ml->ms[c].len);
+      strcat(buf, b1);
+   }
+}
+
+PRIVATE void sprntThread(C8 *buf, S_Thread const *t)
+{
+   C8 b1[50];
+   sprntMatches(b1, &t->matches);
+   sprintf(buf, "eat %d %s ",  t->eatMismatches, b1);
+}
+
 /* --------------------------------- threadsEquivalent ------------------------------------
 
    'a' and 'b' in a thread list are equivalent if they are at the same instruction (pc =
@@ -481,6 +499,40 @@ PRIVATE BOOL threadsEquivalent(S_Thread const *a, S_Thread const *b)
    return
       a->pc == b->pc &&
       a->rptCnt == b->rptCnt;
+}
+
+PRIVATE BOOL matchesSame(S_Match const *a, S_Match const *b)
+   { return a->start == b->start && a->len == b->len; }
+
+PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
+{
+   BOOL dup;
+   for(U8 c = 0; c < from->put; c++)
+   {
+printf("Try to put %d ***\r\n", to->put);
+      BOOL dup = FALSE;
+      for(U8 d = 0; d < to->put; d++)
+      {
+printf("Froms ***\r\n");
+         if(matchesSame(&from->ms[c], &to->ms[d]) )
+         {
+printf("Same ****\r\n");
+            dup = TRUE;
+            break;
+         }
+      }
+printf("Dup? %d *****\r\n", dup);
+      if(dup == FALSE)
+      {
+printf("No DUP to bufSize %d --------------- \r\n", to->bufSize);
+         if(to->put < to->bufSize)
+         {
+            to->ms[to->put] = from->ms[c];
+            to->put++;
+printf("Add match ***** to put %d\r\n", to->put);
+         }
+      }
+   }
 }
 
 /* ------------------------------------ foundDuplicate ------------------------------------
@@ -497,7 +549,11 @@ PRIVATE BOOL foundEarlierDuplicate(S_ThreadList *tl, T_ThrdListIdx ti)
    if(ti > 0) {                                                      // At least one earlier thread in 'tl'?
       for(U8 c = ti; c; c--) {                                       // From the latest thread (-1) to the 1st
          if( threadsEquivalent(&tl->ts[ti], &tl->ts[c-1]) ) {        // This earlier thread is equivalent to the latest?
-            printf("Duplicate found ---------- %d\r\n", ti);
+            mergeMatches(&tl->ts[c-1].matches, &tl->ts[ti].matches);
+            C8 b1[100]; C8 b2[100];
+            sprntThread(b1, &tl->ts[ti]);
+            sprntThread(b2, &tl->ts[c-1]);
+            printf("-------Duplicate found: rpts %d: [%d] %s [%d] %s\r\n", tl->ts[ti].rptCnt, ti, b1, c-1, b2);
             return TRUE; }}}                                         // then TRUE.
    return FALSE;                    // else no equivalent found -> FALSE.
 }
@@ -800,8 +856,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                continue;
 
             case OpCode_Split:                        // --- Split
-               //if( !foundEarlierDuplicate(curr, ti))
-               if(1)
+               if( !foundEarlierDuplicate(curr, ti))
+               //if(1)
                {
                   /* Add both forks to 'curr' thread; both will execute rightaway in this loop.
 
