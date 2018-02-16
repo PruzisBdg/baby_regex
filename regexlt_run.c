@@ -164,12 +164,14 @@ PRIVATE BOOL recordMatch(RegexLT_S_MatchList *ml, C8 const *at, RegexLT_T_MatchL
       if(replaceShorterSubmatch) {
          U8 c;
          for(c = 1; c < ml->put; c++) {                     // matches[0] is the global match. Do not replace that; start at [1].
-            if(ml->matches[c].idx == idx) {
+            if(ml->matches[c].idx == idx && ml->matches[c].len < len) {
                wrRecordAt(&ml->matches[c], at, idx, len);
+//printf("       ------ replace [%d %d]\r\n", idx, len);
                return TRUE; }}}
 
       if(ml->put < ml->listSize) {
          wrRecordAt(&ml->matches[ml->put], at, idx, len);
+//printf("       ----- add [%d %d]\r\n", idx, len);
          ml->put++;
          return TRUE; }}
 
@@ -220,20 +222,46 @@ typedef struct {
 
 /* -------------------------------- addMatch ---------------------------------------- */
 
+PRIVATE void addMatchSub(S_Thread *t, C8 const *inStr, C8 const *start, C8 const *end, BOOL isLead)
+{
+   if(start >= inStr && end >= start) {
+      RegexLT_T_MatchIdx startIdx = ClipU32toU16(start - inStr);
+      RegexLT_T_MatchIdx len = ClipU32toU16(end - start + 1);
+
+      //if(isLead)
+      if(0)
+      {
+         S_Match *m = &t->matches.ms[0];
+
+         if(startIdx < m->start)
+         {
+            m->start = startIdx;
+            m->len = len;
+         }
+         if(t->matches.put == 0)
+            { t->matches.put = 1; }
+      }
+      else
+      {
+         if(t->matches.put < t->matches.bufSize) {
+
+            S_Match *m = &t->matches.ms[t->matches.put];
+
+            m->start = startIdx;
+            m->len = len;
+      //printf("           -------- addM [%d %d]\r\n", m->start, m->len);
+            t->matches.put++; }
+         else
+            { printf("\r\n -------------- No room for match %c-%c\r\n", *start, *end); }
+      }
+   }
+}
 
 PRIVATE void addMatch(S_Thread *t, C8 const *inStr, C8 const *start, C8 const *end)
-{
-   if(t->matches.put < t->matches.bufSize) {
+   { addMatchSub(t, inStr, start, end, FALSE); }
 
-      S_Match *m = &t->matches.ms[t->matches.put];
-
-      if(start >= inStr && end >= start) {
-         m->start = ClipU32toU16(start - inStr);
-         m->len = ClipU32toU16(end - start + 1);
-         t->matches.put++; }}
-   else
-      { printf("\r\n -------------- No room for match %c-%c\r\n", *start, *end); }
-}
+PRIVATE void addLeadMatch(S_Thread *t, C8 const *inStr, C8 const *start, C8 const *end)
+   { addMatchSub(t, inStr, start, end, TRUE); }
 
 /* --------------------------- threadList -----------------------------------------
 
@@ -503,7 +531,7 @@ PRIVATE BOOL threadsEquivalent(S_Thread const *a, S_Thread const *b)
 
 PRIVATE BOOL matchesSame(S_Match const *a, S_Match const *b)
    { return a->start == b->start && a->len == b->len; }
-
+#if 0
 PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
 {
    BOOL dup;
@@ -534,6 +562,33 @@ printf("Add match ***** to put %d\r\n", to->put);
       }
    }
 }
+#else
+PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
+{
+   BOOL dup;
+   for(U8 c = 0; c < from->put; c++)
+   {
+      BOOL dup = FALSE;
+      for(U8 d = 0; d < to->put; d++)
+      {
+         if(matchesSame(&from->ms[c], &to->ms[d]) )
+         {
+            dup = TRUE;
+            break;
+         }
+      }
+      if(dup == FALSE)
+      {
+         if(to->put < to->bufSize)
+         {
+            to->ms[to->put] = from->ms[c];
+            to->put++;
+         }
+      }
+   }
+}
+
+#endif
 
 /* ------------------------------------ foundDuplicate ------------------------------------
 
@@ -666,7 +721,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         Char-Box so a subsequent mismatch should terminate this thread => '_StopAtMismatch'.
                      */
                      newT = newThread(pc+1, sp, loopCnt, gs, &dfltMatchCfg, _StopAtMismatch);
-                     addMatch(newT, str, cBoxStart, cBoxStart);
+//printf("           ++++ leadMatch\r\n");
+                     addLeadMatch(newT, str, cBoxStart, cBoxStart);
 
                      if(ip->closesGroup)                                         // This chars-list closed a subgroup?
                      {
@@ -674,6 +730,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         {
                            newT->subgroupStart = cBoxStart;
                            addMatch(newT, str, cBoxStart, sp-1);
+//printf("           ++++++ openClose\r\n");
                         }
                      }
                      else if(ip->opensGroup && newT->subgroupStart == NULL)      // else this path opens a subgroup now?
@@ -797,7 +854,10 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   // Copy any matches from this thread into the master
                   U8 execCycles;
                   for(execCycles = 0; execCycles < thrd->matches.put; execCycles++)
-                     { copyInMatch(ml, &thrd->matches.ms[execCycles], str); }
+                  {
+                     //printf("         -------- copyIn [%d %d]\r\n", thrd->matches.ms[execCycles].start, thrd->matches.ms[execCycles].len );
+                     copyInMatch(ml, &thrd->matches.ms[execCycles], str);
+                  }
                }
 
                if( flags & _RegexLT_Flags_MatchLongest )
@@ -914,7 +974,7 @@ EndsCurrentStep:
       swapPtr(&curr, &next);
       clearThreadList(next);
 
-   } while(curr->put > 0 && ++execCycles < 20);
+   } while(curr->put > 0 && ++execCycles < 25);
 
 
 CleanupAndRtn:

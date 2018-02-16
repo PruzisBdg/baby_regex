@@ -96,7 +96,7 @@ PRIVATE void printOneMatch(RegexLT_S_Match const *m)
 
    memcpy(buf, m->at, len = MinU8(m->len, _MaxChars));
    buf[len] = '\0';
-   printf(" [%d %d] \'%s\'", m->idx, m->idx + m->len - 1, buf);
+   printf(" [%d %d] \'%s\'", m->idx, m->len, buf);
 
    #undef _MaxChars
 }
