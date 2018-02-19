@@ -166,12 +166,10 @@ PRIVATE BOOL recordMatch(RegexLT_S_MatchList *ml, C8 const *at, RegexLT_T_MatchL
          for(c = 1; c < ml->put; c++) {                     // matches[0] is the global match. Do not replace that; start at [1].
             if(ml->matches[c].idx == idx && ml->matches[c].len < len) {
                wrRecordAt(&ml->matches[c], at, idx, len);
-//printf("       ------ replace [%d %d]\r\n", idx, len);
                return TRUE; }}}
 
       if(ml->put < ml->listSize) {
          wrRecordAt(&ml->matches[ml->put], at, idx, len);
-//printf("       ----- add [%d %d]\r\n", idx, len);
          ml->put++;
          return TRUE; }}
 
@@ -228,15 +226,14 @@ PRIVATE void addMatchSub(S_Thread *t, C8 const *inStr, C8 const *start, C8 const
       RegexLT_T_MatchIdx startIdx = ClipU32toU16(start - inStr);
       RegexLT_T_MatchIdx len = ClipU32toU16(end - start + 1);
 
-      //if(isLead)
-      if(0)
+      if(isLead && t->matches.put > 0)
       {
          S_Match *m = &t->matches.ms[0];
-
          if(startIdx < m->start)
          {
             m->start = startIdx;
             m->len = len;
+            dbgPrint("Add lead  [%d %d] @ %d\r\n", m->start, m->len, t->matches.put);
          }
          if(t->matches.put == 0)
             { t->matches.put = 1; }
@@ -249,7 +246,7 @@ PRIVATE void addMatchSub(S_Thread *t, C8 const *inStr, C8 const *start, C8 const
 
             m->start = startIdx;
             m->len = len;
-      //printf("           -------- addM [%d %d]\r\n", m->start, m->len);
+            dbgPrint("AddM [%d %d] @ %d\r\n", m->start, m->len, t->matches.put);
             t->matches.put++; }
          else
             { printf("\r\n -------------- No room for match %c-%c\r\n", *start, *end); }
@@ -457,11 +454,8 @@ PRIVATE C8 const *printTriad(C8 const *p)
    return buf;
 }
 
-/* ----------------------------------------- printRegexSample ------------------------------
+/* ----------------------------------------- printRegexSample ------------------------------ */
 
-
-
-*/
 PRIVATE C8 const * printRegexSample(S_CharsBox const *cb)
 {
    #define _width 8
@@ -499,6 +493,8 @@ PRIVATE C8 const * prntRpts( S_RepeatSpec const *r, T_RepeatCnt cnt )
    return buf;
 }
 
+/* ----------------------------------- sprntMatches --------------------------------------- */
+
 PRIVATE void sprntMatches(C8 *buf, S_MatchList const *ml)
 {
    C8 b1[10];
@@ -509,6 +505,8 @@ PRIVATE void sprntMatches(C8 *buf, S_MatchList const *ml)
       strcat(buf, b1);
    }
 }
+
+/* ----------------------------------- sprntThread --------------------------------------- */
 
 PRIVATE void sprntThread(C8 *buf, S_Thread const *t)
 {
@@ -529,66 +527,41 @@ PRIVATE BOOL threadsEquivalent(S_Thread const *a, S_Thread const *b)
       a->rptCnt == b->rptCnt;
 }
 
+/* ---------------------------------- matchesSame -------------------------------------- */
+
 PRIVATE BOOL matchesSame(S_Match const *a, S_Match const *b)
    { return a->start == b->start && a->len == b->len; }
-#if 0
-PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
-{
-   BOOL dup;
-   for(U8 c = 0; c < from->put; c++)
-   {
-printf("Try to put %d ***\r\n", to->put);
-      BOOL dup = FALSE;
-      for(U8 d = 0; d < to->put; d++)
-      {
-printf("Froms ***\r\n");
-         if(matchesSame(&from->ms[c], &to->ms[d]) )
-         {
-printf("Same ****\r\n");
-            dup = TRUE;
-            break;
-         }
-      }
-printf("Dup? %d *****\r\n", dup);
-      if(dup == FALSE)
-      {
-printf("No DUP to bufSize %d --------------- \r\n", to->bufSize);
-         if(to->put < to->bufSize)
-         {
-            to->ms[to->put] = from->ms[c];
-            to->put++;
-printf("Add match ***** to put %d\r\n", to->put);
-         }
-      }
-   }
-}
-#else
-PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
-{
-   BOOL dup;
-   for(U8 c = 0; c < from->put; c++)
-   {
-      BOOL dup = FALSE;
-      for(U8 d = 0; d < to->put; d++)
-      {
-         if(matchesSame(&from->ms[c], &to->ms[d]) )
-         {
-            dup = TRUE;
-            break;
-         }
-      }
-      if(dup == FALSE)
-      {
-         if(to->put < to->bufSize)
-         {
-            to->ms[to->put] = from->ms[c];
-            to->put++;
-         }
-      }
-   }
-}
 
-#endif
+/* ------------------------------------- mergeMatches ------------------------------------------------
+*/
+PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
+{
+   BOOL dup;
+   for(U8 c = 0; c < from->put; c++)                     // For each match in 'from'...
+   {
+      BOOL dup = FALSE;
+      for(U8 d = 0; d < to->put; d++)                    // With each match in 'to'...
+      {
+         if(matchesSame(&from->ms[c], &to->ms[d]) ) {    // Same [start, len]?
+            dup = TRUE;                                  // then from[c] is already in to[];
+            break; }                                     // quit looking now; no action required
+      }
+      if(dup == FALSE)                                   // Did NOT find from[c] in to[]?
+      {                                                  // So must copy it in.
+         if(c == 0)                                      // At from[0]? ... the global match
+         {                                               // then compare global matches; from[0] vs. to[0].
+            if(from->ms[0].start < to->ms[0].start)      // from[0] is earlier?
+               { to->ms[0] = from->ms[0]; }              // then overwrite to[0] with that earlier match.
+         }
+         else                                            // else at from[1...]; submatches
+         {                                               // Just add the submatch, if there's room.
+            if(to->put < to->bufSize) {                  // Room in to[] yet?
+               to->ms[to->put] = from->ms[c];            // then append from[c]
+               to->put++; }                              // and to[] has an (additional) submatch.
+         }
+      }
+   } // for each match in from[]
+}
 
 /* ------------------------------------ foundDuplicate ------------------------------------
 
@@ -721,7 +694,6 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         Char-Box so a subsequent mismatch should terminate this thread => '_StopAtMismatch'.
                      */
                      newT = newThread(pc+1, sp, loopCnt, gs, &dfltMatchCfg, _StopAtMismatch);
-//printf("           ++++ leadMatch\r\n");
                      addLeadMatch(newT, str, cBoxStart, cBoxStart);
 
                      if(ip->closesGroup)                                         // This chars-list closed a subgroup?
@@ -730,7 +702,6 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         {
                            newT->subgroupStart = cBoxStart;
                            addMatch(newT, str, cBoxStart, sp-1);
-//printf("           ++++++ openClose\r\n");
                         }
                      }
                      else if(ip->opensGroup && newT->subgroupStart == NULL)      // else this path opens a subgroup now?
@@ -854,10 +825,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   // Copy any matches from this thread into the master
                   U8 execCycles;
                   for(execCycles = 0; execCycles < thrd->matches.put; execCycles++)
-                  {
-                     //printf("         -------- copyIn [%d %d]\r\n", thrd->matches.ms[execCycles].start, thrd->matches.ms[execCycles].len );
-                     copyInMatch(ml, &thrd->matches.ms[execCycles], str);
-                  }
+                     { copyInMatch(ml, &thrd->matches.ms[execCycles], str); }
                }
 
                if( flags & _RegexLT_Flags_MatchLongest )
@@ -959,9 +927,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   if( prog->buf[pc+1].opcode == OpCode_Match)
                      { matchedMinimal = TRUE; }
                   continue;
-               }
-
-
+               } // case OpCode_Split:
          }     //switch(ip->opcode )
       }     // for(ti = 0; ti < curr->put; ti++)
 EndsCurrentStep:
@@ -969,8 +935,8 @@ EndsCurrentStep:
       /* Exhausted the current thread list. But may have queued some new threads in 'next.
          Make 'next' the new 'curr' and clean out 'next' for next go-around..
       */
-                                                                        dbgPrint("\r\nnew list %d: [curr.put <- next.put]: [%d %d]->[%d _]\r\n",
-                                                                                                                  execCycles, curr->put, next->put, next->put);
+                                                                        dbgPrint("\r\n%d: ---- [curr.put <- next.put]: [%d %d]->[%d _]\r\n",
+                                                                                                                  execCycles+1, curr->put, next->put, next->put);
       swapPtr(&curr, &next);
       clearThreadList(next);
 
