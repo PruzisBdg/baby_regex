@@ -139,6 +139,9 @@ PRIVATE S_Test const tests[] = {
    { "\\(\\d{3}\\)[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,14}}}  },
    { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
    { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "414-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,12}}}  },
+
+   // Explosive quantifier
+   { "^(a+)*b",      "aaab",                 E_RegexRtn_Match,    {2, {{0,4},{0,3}}}},
 };
 
 #else
@@ -153,8 +156,8 @@ PRIVATE RegexLT_S_Cfg cfg = {
 };
 
 PRIVATE S_Test const tests[] = {
-//   { "^(a+)*b",          "aaab",                     E_RegexRtn_Match,  {2, {{0,4},{0,3}}}              },       // The empty string is no-match
-   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
+   { "^(a+)*b",          "aaab",                     E_RegexRtn_Match,  {2, {{0,4},{0,3}}}              },       // The empty string is no-match
+//   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
 //   { "dog|cat",      "pussycats",            E_RegexRtn_Match,    {1, {{5,3}}}         },
 };
 

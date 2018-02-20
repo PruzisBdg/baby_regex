@@ -238,7 +238,7 @@ PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_
                   Any thread may have up to a global match plus a match for each sub-expression. So reserve 'subExprs'+1.
                */
                printProgram(&prog);                         // Run 'prog' on 'srcStr'; matches into 'ml'.
-               U8  matchesPerThread = stats.subExprs+1;
+               U8  matchesPerThread = stats.subExprs+2;
                rtn = runCompiledRegex( &prog.instrs, srcStr, ml, matchesPerThread, flags);
             }
          }

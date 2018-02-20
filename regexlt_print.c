@@ -213,6 +213,8 @@ PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxC
             else
                { sprintf(out, "(");  charCnt++; out++; }
          }
+         else
+            { sprintf(out, " "); charCnt++; out++; }
 
          switch(seg->opcode) {                                                         // This segment is a...
             case OpCode_Chars: {                                              // ...a piece of the source regex.
@@ -224,7 +226,7 @@ PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxC
                {
                   memcpy(buf, seg->payload.chars.start, segChars);                     // Otherwise copy into 'buf'
                   buf[segChars] = '\0';
-                  sprintf(out, "<%s>", buf);                                           // and print to 'out', enclosed in '<>'.
+                  sprintf(out, "'%s'", buf);                                           // and print to 'out', enclosed in '<>'.
                   charCnt += (segChars+2);
                   out += (segChars+2);
                   break;
