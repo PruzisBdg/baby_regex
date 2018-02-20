@@ -36,6 +36,7 @@ typedef struct {
 
    U8    classCnt,   // Numbers of character class definitions so far
          segCnt,     // Character segments so far
+         leftCnt,    // 'free' 'left' chars pending an operator. Any operator will bind the last char only.
          escCnt,     // Number of chars escaped OUTSIDE A CHAR CLASS.
          operators,
          subExprs;
@@ -91,18 +92,29 @@ enum {
    OpCode_EscCh,              // Single escaped char from the regex string e.g '\n' or \d (a digit)
    OpCode_Class,              // Character class e.g [0-9a-z]
    OpCode_CharBox,            // List of 'Chars', 'EscCh', 'Class', representing a contiguous stretch of the regex between operators.
+   OpCode_Anchor,             // '^','$'.
    OpCode_Jmp,                // Jump relative
    OpCode_Split,              // Split into 2 simultaneous threads of execution.
-   OpCode_Match } eOpCode;    // Terminates both character box list and compiled regex instructions list.
+   OpCode_Match,
+   OpCode_EndCBox = OpCode_Match // Terminates both character box list and compiled regex instructions list.
+   } eOpCode;
+
+static inline BOOL isAnchor(C8 ch)
+   { return ch == '^' || ch == '$'; }
+
+static inline BOOL opCode_HoldsChars(T_OpCode op)
+   { return op == OpCode_Chars || op == OpCode_EscCh || op == OpCode_Class || op == OpCode_Anchor; }
 
 // A segment of chars in the source regex.
 typedef U8 T_CharSegmentLen;
 typedef struct {C8 const *start; T_CharSegmentLen len; } S_CharSegment;
 typedef struct { C8 ch; } S_EscChar;
+typedef struct { C8 ch; } S_Anchor;
 
 typedef union {                     // One of... from the match string.
    S_CharSegment chars;             //    a char segment (start, numChars)
    S_EscChar     esc;               //    an escaped char e.g \n, \t
+   S_Anchor      anchor;
    S_C8bag       *charClass;        //    a char class e.g [0-8ab]
 } U_Payload;
 
@@ -113,8 +125,10 @@ typedef struct  {                   // Holds either a char segment, escaped char
 } S_Chars;
 
 typedef struct {                    // A box of one or more character segments or classes in the match string.
-   S_Chars     *buf;                // The char segments and char classes.
-   T_InstrIdx  len;                 // Number of elements in 'buf'
+   S_Chars     *segs;               // The char segments and char classes.
+   T_InstrIdx  bufSize,             // Number of buf[] malloced.
+               put,                 // when filling 'segs'.
+               len;                 // Number of chars-segments in 'buf'
    BOOL        opensGroup,
                closesGroup;
    BOOL        eatUntilMatch;       // Eat source string until 1st match with chars or class in 'buf'[0].
@@ -132,12 +146,14 @@ typedef struct {                    // A (compiled) instruction. Contains:
 
 typedef struct {                    // List of character-segments and char-classes from the match string...
    S_Chars     *buf;                // ...which are here
-   T_InstrIdx  put;                 // 'put' to add another segment / number of S_Instr in 'buf'.
+   T_InstrIdx  size,                // Size of S_Chars malloced() based on pre-scan.
+               put;                 // 'put' to add another segment / number of S_Instr in 'buf'.
 } S_CharsList;
 
 typedef struct {                    // List of instructions...
    S_Instr     *buf;                // ...which are here.
-   T_InstrIdx  put;                 // 'put' to add another one / number of S_Instr in 'buf'.
+   T_InstrIdx  size,                // Size of S_Chars malloced() based on pre-scan.
+               put;                 // 'put' to add another one / number of S_Instr in 'buf'.
 } S_InstrList;
 
 // A compiled regex is...
@@ -164,7 +180,9 @@ PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
 PUBLIC void regexlt_safeFreeList(void **lst, U8 listSize);
 PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
 
-PUBLIC void regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb);
+PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxChars);
+
+PUBLIC C8 rightOperator(C8 const *rgx);
 
 #endif // REGEXLT_PRIVATE_H
 

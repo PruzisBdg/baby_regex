@@ -7,11 +7,12 @@
 |
 | The program compiles the search expression into a non-deterministic finite
 | automaton (NFA) and executes the multiple paths through the NFA on the input in
-| lockstep. A match is the first path which exhausts the regex expression.
+| lockstep. A match is the longest of those paths which first exhaust the regex.
+| (more than one path may exhaust the regex simultaneously)
 |
 | So there's no backtracking; any path which fails on the current input char is
-| terminated while the remaining paths continue (to the next char). No backtracking
-| eliminates exponential blowup with multiple alternates constructions.
+| terminated while remaining paths continue (to the next char). No backtracking
+| eliminates exponential blowup with multiple alternates.
 |
 | Thompson's insight was that the width of the execution tree (the number of
 | simultaneous threads) can never be more than than number of compiled regex
@@ -19,6 +20,30 @@
 | branch/thread AND because a regex, by definition, can be executed on a DFA.
 | So once the regex is compiled, the amount of memory needed to run it is
 | known/bounded.
+|
+| Corner cases:
+|  - Empty string is no match.
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|
+|  Public:
+|     RegexLT_Init()
+|     RegexLT_Match()
+|     RegexLT_Replace()
+|     RegexLT_PrintMatchList()
+|     RegexLT_PrintMatchList_OnOneLine()
+|     RegexLT_FreeMatches()
+|     RegexLT_RtnStr()
 |
 --------------------------------------------------------------------------------*/
 
@@ -71,7 +96,7 @@ PRIVATE void printOneMatch(RegexLT_S_Match const *m)
 
    memcpy(buf, m->at, len = MinU8(m->len, _MaxChars));
    buf[len] = '\0';
-   printf(" [%d %d] \'%s\'", m->idx, m->idx + m->len - 1, buf);
+   printf(" [%d %d] \'%s\'", m->idx, m->len, buf);
 
    #undef _MaxChars
 }
@@ -99,8 +124,9 @@ PUBLIC void RegexLT_PrintMatchList(RegexLT_S_MatchList const *ml)
       for( c = 1; c < ml->put; c++ )
          { printOneMatch(&ml->matches[c]); }       // 'subs: [1,43 'dog'  [7,9] 'cat'
    }
-
 }
+
+/* ------------------------ RegexLT_PrintMatchList_OnOneLine ------------------------- */
 
 PUBLIC void RegexLT_PrintMatchList_OnOneLine(RegexLT_S_MatchList const *ml)
 {
@@ -108,7 +134,7 @@ PUBLIC void RegexLT_PrintMatchList_OnOneLine(RegexLT_S_MatchList const *ml)
       { printf("------ No matches"); }
    else                                            // at least a global match
    {
-      printf("------ Matches: ");
+      dbgPrint("------ Matches: ");
       U8 c;
       for( c = 0; c < ml->put; c++ )
          { printOneMatch(&ml->matches[c]); }       // 'subs: [1,43 'dog'  [7,9] 'cat'
@@ -151,7 +177,7 @@ PUBLIC void RegexLT_Init(RegexLT_S_Cfg const *cfg) { regexlt_cfg = cfg; }
 
 /* -------------------------------- RegexLT_Match --------------------------------------
 
-   Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'
+   Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'.
 */
 PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_MatchList **ml, RegexLT_T_Flags flags)
 {
@@ -187,6 +213,8 @@ PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_
          else                                               // otherwise we can compile and run 'regex'.
          {
             prog.classes.size = stats.classes;
+            prog.chars.size = stats.charboxes;
+            prog.instrs.size = stats.instructions;
 
             if( compileRegex(&prog, regexStr) == FALSE)     // Compile 'regexStr' into 'prog'. Failed?
             {
@@ -203,11 +231,15 @@ PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_
                      }
                      else if( (*ml = newMatchList(stats.subExprs)) == NULL) {
                         rtn = E_RegexRtn_OutOfMemory;
-                        goto FreeAndQuit; }                   // Big enuf to hold the global match plus sub-groups.
+                        goto FreeAndQuit; }                 // Big enuf to hold the global match plus sub-groups.
                   }
 
+               /* Run the compiled program 'prog.instrs' on 'srcStr' with matches written to 'ml', if this is supplied.
+                  Any thread may have up to a global match plus a match for each sub-expression. So reserve 'subExprs'+1.
+               */
                printProgram(&prog);                         // Run 'prog' on 'srcStr'; matches into 'ml'.
-               rtn = runCompiledRegex(&prog.instrs, srcStr, ml, stats.subExprs, flags);
+               U8  matchesPerThread = stats.subExprs+2;
+               rtn = runCompiledRegex( &prog.instrs, srcStr, ml, matchesPerThread, flags);
             }
          }
          // Done. Free() memory we malloced(), excepting the matches. These are for the caller.
@@ -311,7 +343,7 @@ PUBLIC T_RegexRtn RegexLT_Replace(C8 const *searchRegex, C8 const *inStr, C8 con
 PUBLIC void RegexLT_FreeMatches(RegexLT_S_MatchList const *ml)
 {
    safeFree(ml->matches);     // First free matches.
-   safeFree(ml);              // then the enclosing match-list;
+   safeFree((void*)ml);              // then the enclosing match-list;
 }
 
 

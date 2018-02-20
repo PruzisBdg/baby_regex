@@ -127,6 +127,7 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
                {
                   ctx->charSeg = FALSE;         // then we have left it now...
                   ctx->segCnt++;                // and we have one more chars segment.
+                  ctx->leftCnt = 0;             // Closed out a segment, so reset the count of free-left chars
                }
             }
          }
@@ -148,7 +149,13 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
             if( isAnOperator(ch) )              // ?,*,| or + ?
             {
                ctx->charSeg = FALSE;            // then if we were in a char segment we are out of it now.
+
+               if(ctx->leftCnt >= 2)            // 2 or more open chars?
+               {
+                  ctx->segCnt++;                // the operator takes the proximate, which needs it's own char-segment.
+               }
                ctx->operators++;                // and count this operator.
+               ctx->leftCnt = 0;                // Reset count of free-left chars.
 
                /* '|' is right-associative. If there's a subgroup ahead of '|' compiler reserves
                   an NOP ahead of the subgroup CharBox to place a 'Split' corresponding to the
@@ -164,10 +171,21 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
                ctx->inRange = TRUE;             // then parse through that, and...
                ctx->charSeg = FALSE;            // ...if we were in a char segment we are out of it now.
             }
-            else if(ctx->charSeg == FALSE)      // Not marked as in a char segment.
+            else if(isAnchor(ch))
             {
-               ctx->charSeg = TRUE;             // then we are now.
-               ctx->segCnt++;                   // and bump the char segment count.
+               ctx->charSeg = FALSE;
+               ctx->segCnt++;
+               ctx->leftCnt = 0;
+            }
+            else                                // else a regular char
+            {
+               ctx->leftCnt++;                  // Count chars open since last operator
+
+               if(ctx->charSeg == FALSE)        // Not marked as in a char segment.
+               {
+                  ctx->charSeg = TRUE;          // then we are now.
+                  ctx->segCnt++;                // and bump the char segment count.
+               }
             }
          }           // else some other char.
       }           // not open-class or escape?
@@ -191,7 +209,7 @@ PRIVATE void prescanError(S_CntRegexParts const *ctx, T_RegexParts_Rtn err, U8 i
 {
    C8 buf[10];
    if(isprint(ch)) { sprintf(buf, "\'%c\'", ch); } else { sprintf(buf, "\\x%x", ch); }
-   dbgPrint("------ Prescan: error, %s at [%d %s]", prescanErrName(err), idx, buf);
+   dbgPrint("\r\n------ Prescan: error, %s at [%d %s]", prescanErrName(err), idx, buf);
 }
 
 /* ------------------------------------- regexlt_prescan ----------------------------------------
@@ -207,7 +225,7 @@ PUBLIC S_RegexStats regexlt_prescan(C8 const *regex)
 
    S_CntRegexParts ctx = {
       .inClass = FALSE, .inRange = FALSE, .charSeg = FALSE, .esc = FALSE,
-      .classCnt = 0, .segCnt = 0, .escCnt = 0, .operators = 0,
+      .classCnt = 0, .segCnt = 0, .leftCnt = 0, .escCnt = 0, .operators = 0,
       .subExprs = 1 };                                            // There's always at least one sub-expression, which is the whole regex.
 
    S_RegexStats s = {.len=0, .charboxes=0, .instructions=0, .classes = 0, .subExprs = 0, .legal=FALSE};

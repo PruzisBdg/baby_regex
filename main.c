@@ -74,7 +74,7 @@ typedef struct {
 } S_Test;
 
 
-#if 0
+#if 1
 PRIVATE RegexLT_S_Cfg cfg = {
    .getMem        = getMemCleared,
    .free          = myFree,
@@ -84,10 +84,24 @@ PRIVATE RegexLT_S_Cfg cfg = {
    .maxStrLen     = MAX_U8
 };
 
+PRIVATE C8 const matchPhone1[] = "\\d{3}[ \\-]?\\d{3}[ \\-]?\\d{4}";
+
 PRIVATE S_Test const tests[] = {
    // Regex            Test string        Result code           Matches (if any)
    //                                                      {how_many [start, len]..}
    // ----------------------------------------------------------------------------
+   { "abc",          "",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
+   { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
+
+   { "^abc$",        "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },
+   { "^abc$",        "abcd",                 E_RegexRtn_NoMatch,  {0, {}}              },
+   { "^bcd$",        "abcd",                 E_RegexRtn_NoMatch,  {0, {}}              },
+
+   // Word boundary (\b)
+   { "\\bcat\\b",       "cat",               E_RegexRtn_Match,    {1, {{0,3}}}         },
+   { "\\bcat",          "a cat",             E_RegexRtn_Match,    {1, {{2,3}}}         },
+   { "\\bcat\\d",       "acat1 cat2",        E_RegexRtn_Match,    {1, {{6,4}}}         },
+
    { ".*def",        "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
    { ".{2,}def",     "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },
    { ".*de{1}f",     "abcdeefghij",          E_RegexRtn_NoMatch,  {0, {}}              },
@@ -119,6 +133,15 @@ PRIVATE S_Test const tests[] = {
    { "34+",          "2344456344448",        E_RegexRtn_Match,    {1, {{1,4}}}         },
    { "34+",          "2344456344448123445",  E_RegexRtn_Match,    {1, {{7,5}}},  _RegexLT_Flags_MatchLongest   },
    { "34+",          "2344456344448123445",  E_RegexRtn_Match,    {1, {{15,3}}}, _RegexLT_Flags_MatchLast      },
+   { matchPhone1,    "414 777 9214",         E_RegexRtn_Match,    {1, {{0,12}}}  },
+   { matchPhone1,    "414-777-9214",         E_RegexRtn_Match,    {1, {{0,12}}}  },
+   { matchPhone1,    "tel 414-777-9214 nn",  E_RegexRtn_Match,    {1, {{4,12}}}  },
+   { "\\(\\d{3}\\)[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414) 777 9214",      E_RegexRtn_Match,    {1, {{0,14}}}  },
+   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
+   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "414-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,12}}}  },
+
+   // Explosive quantifier
+   { "^(a+)*b",      "aaab",                 E_RegexRtn_Match,    {2, {{0,4},{0,3}}}},
 };
 
 #else
@@ -132,11 +155,10 @@ PRIVATE RegexLT_S_Cfg cfg = {
    .maxStrLen     = MAX_U8
 };
 
-//PRIVATE C8 const getsPhoneNum[] = "\\d{3}[ -]?\\d{4}[ -]?\\d{4}";
-PRIVATE C8 const getsPhoneNum[] = "34+";
-
 PRIVATE S_Test const tests[] = {
-   { "\\d{3} \\d{4}",    "123 4567",      E_RegexRtn_Match,    {2, {{5,3}, {5,2}}}  },
+   { "^(a+)*b",          "aaab",                     E_RegexRtn_Match,  {2, {{0,4},{0,3}}}              },       // The empty string is no-match
+//   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
+//   { "dog|cat",      "pussycats",            E_RegexRtn_Match,    {1, {{5,3}}}         },
 };
 
 #endif
@@ -153,7 +175,7 @@ typedef struct {
    C8 rtn;
 } S_TestRightOperator;
 
-PRIVATE S_TestRightOperator const rightOpTsts[] = {
+PRIVATE S_TestRightOperator const rightOpTests[] = {
    { "abc",    '$' },
    { "a+",     '+' },
    { "a?",     '?' },
@@ -169,11 +191,13 @@ PRIVATE S_TestRightOperator const rightOpTsts[] = {
    { "a\\+",    '$' },
    { "a\\?",    '$' },
    { "a\\*",    '$' },
-   { "a\\{",    '$' },
+   { "a\\{",    '$' },               if( !foundEarlierDuplicate(curr, ti))
+
 
    // Post operator captures previous char.
    { "ab+",     'E' },
-   { "ab?",     'E' },
+   { "ab?",     'E' },                  thrd->matches.ms[0].len = cBoxStart - str - thrd->matches.ms[0].start;
+
    { "ab*",     'E' },
    { "ab{2}",   'E' },
 
@@ -201,6 +225,9 @@ PRIVATE S_TestRightOperator const rightOpTsts[] = {
    { "(a)bb",  'E' },
    { "(a)",    '$' },
 
+   { "(\\d)",    '$' },
+   { "\\(\\d{3}", 'E' },
+
    // Nesting
    { "(ab(cd))", '$' },
    { "(ab(cd))e", 'E' },
@@ -224,16 +251,27 @@ PRIVATE S_TestRightOperator const rightOpTsts[] = {
 
 };
 
-PRIVATE void testRightOp(void)
+PRIVATE S_TestRightOperator const ropTstB[] = {
+   { "(\\d)",    '$' },
+};
+
+#define _ropTsts rightOpTests
+
+PRIVATE void testRightOp(S_TestRightOperator const *tbl, U16 tblSize)
 {
-   U8 c;
-   C8 rtn;
-   for(c = 0; c < RECORDS_IN(rightOpTsts); c++)
+   U8 c, fails; C8 rtn;
+
+   for(c = 0, fails = 0; c < tblSize; c++)
    {
-      if( (rtn = rightOperator( rightOpTsts[c].tstStr)) != rightOpTsts[c].rtn )
+      if( (rtn = rightOperator( tbl[c].tstStr)) != tbl[c].rtn )
       {
-         printf("right operator fail: %s -> %c but got %c\r\n", rightOpTsts[c].tstStr, rightOpTsts[c].rtn, rtn);
+         printf("right operator fail: %s -> %c but got %c\r\n", tbl[c].tstStr, tbl[c].rtn, rtn);
+         fails++;
       }
+   }
+   if(fails == 0)
+   {
+      printf("right operator - Passed %d tests\r\n", c);
    }
 }
    #endif // #ifdef TEST_RIGHT_OPERATOR
@@ -318,7 +356,7 @@ PRIVATE BOOL runOneTest_PrintOneLine(S_Test const *t)
          {
             RegexLT_PrintMatchList_OnOneLine(ml);                                   // then print matches
             printf("\r\n");                                                         // Drop a line, for the next test, but...
-            matchesOK(ml, &t->matchChk);                                            // if matches don't agree with those listed in the test, print the discrepancy
+            return matchesOK(ml, &t->matchChk);                                            // if matches don't agree with those listed in the test, print the discrepancy
          }
          else                                                                       // else result code was something other than 'match'
          {
@@ -327,7 +365,6 @@ PRIVATE BOOL runOneTest_PrintOneLine(S_Test const *t)
          RegexLT_FreeMatches(ml);                                                   // Done with matches.
          return TRUE;                                                               // Test passed
       }
-
    }
    else
    {
@@ -364,7 +401,8 @@ int main()
    RegexLT_Init(&cfg);
 
       #ifdef TEST_RIGHT_OPERATOR
-   testRightOp();RegexLT_Match
+   //testRightOp(rightOpTests, RECORDS_IN(rightOpTests));
+   testRightOp(_ropTsts, RECORDS_IN(_ropTsts));
    return 1;
       #endif
 
@@ -374,15 +412,15 @@ int main()
 //   printf("Out: %s\r\n", out);
 //   return 1;
 
-   U8 c;
-   for(c = 0; c < RECORDS_IN(tests); c++)
+   U8 c, fails;
+   for(c = 0, fails = 0; c < RECORDS_IN(tests); c++)
    {
       printf("%-2d: ", c);
 
       if( runOneTest_PrintOneLine(&tests[c]) == FALSE)
-      {
-      }
+         { fails++; }
    }
+   if(fails == 0) { printf("\r\n----- All Passed -----\r\n"); } else { printf("\r\n------- %d Fail(s) --------\r\n", fails); }
    return 1;
 }
 
