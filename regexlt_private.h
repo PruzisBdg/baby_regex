@@ -152,8 +152,9 @@ typedef struct {                    // List of character-segments and char-class
 
 typedef struct {                    // List of instructions...
    S_Instr     *buf;                // ...which are here.
-   T_InstrIdx  size,                // Size of S_Chars malloced() based on pre-scan.
+   T_InstrIdx  size,                // Size of S_Instr malloced() based on pre-scan.
                put;                 // 'put' to add another one / number of S_Instr in 'buf'.
+   U16         maxRunCnt;           // Max iterations of the threads-list. Usually a bit longer than the input string.
 } S_InstrList;
 
 // A compiled regex is...

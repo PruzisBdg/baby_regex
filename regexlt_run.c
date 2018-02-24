@@ -938,7 +938,13 @@ EndsCurrentStep:
       swapPtr(&curr, &next);
       clearThreadList(next);
 
-   } while(curr->put > 0 && ++execCycles < 25);
+      // Break if too many cycles of the thread list. Something badly wrong; as this is based of the
+      // length of the input string.
+      if(++execCycles > prog->maxRunCnt) {
+         rtn = E_RegexRtn_RanTooLong;
+         goto CleanupAndRtn; }
+
+   } while(curr->put > 0);
 
 
 CleanupAndRtn:

@@ -167,6 +167,22 @@ PUBLIC RegexLT_S_MatchList * newMatchList(U8 len)
    }
 }
 
+/* ---------------------------------------------- inputOK --------------------------------------
+
+   A sfae check of the length of ;inStr'; mus not be longer than 'maxLen'.
+*/
+typedef struct { BOOL ok; U16 len; } S_StrChkRtns;
+
+PRIVATE S_StrChkRtns inputOK(C8 const *inStr, U16 maxLen)
+{
+   for(U16 c = 0; c <= maxLen; c++, inStr++) {                 // Thru 'inStr' up to 'maxLen'
+      if(*inStr == '\0') {                                     // Found end?
+         S_StrChkRtns r0 = {.ok = TRUE, .len = c};             // then 'inStr' is OK and length is this...
+         return r0; }}                                         // ...which is the result we return.
+
+   S_StrChkRtns r1 = {.ok = FALSE, .len = 0}; return r1;       // Else 'inStr' is longer than 'maxLen'. result .ok = FALSE.
+}
+
 
 /* -------------------------------- RegexLT_Init --------------------------------------
 
@@ -183,6 +199,11 @@ PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_
 {
    if(regexlt_cfg == NULL)                                  // User did not supply a cfg with RegexLT_Init().
       { return E_RegexRtn_BadCfg; }                         // then go no further.
+
+   S_StrChkRtns strChk = inputOK(srcStr, regexlt_cfg->maxStrLen);
+
+   if(strChk.ok == FALSE )
+      { return E_RegexRtn_BadInput; }
 
    S_RegexStats stats = regexlt_prescan(regexStr);          // Prescan regex; check for gross errors and count resources needed to compile it.
 
@@ -215,6 +236,7 @@ PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_
             prog.classes.size = stats.classes;
             prog.chars.size = stats.charboxes;
             prog.instrs.size = stats.instructions;
+            prog.instrs.maxRunCnt = strChk.len + 10;        // Thread run-limit is string size plus for some anchors.
 
             if( compileRegex(&prog, regexStr) == FALSE)     // Compile 'regexStr' into 'prog'. Failed?
             {
@@ -360,6 +382,7 @@ PUBLIC C8 const * RegexLT_RtnStr(T_RegexRtn r)
       case E_RegexRtn_BadInput:     return "Bad input string (TBD)";
       case E_RegexRtn_OutOfMemory:  return "Out of memory";
       case E_RegexRtn_CompileFailed:return "Compile failed";
+      case E_RegexRtn_RanTooLong:   return "Run limit exceeded";
       default:                      return "No string for this return code";
    }
 }
