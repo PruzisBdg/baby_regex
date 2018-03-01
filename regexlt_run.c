@@ -708,12 +708,11 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      if( *(cBoxStart+1) != '\0')                                 // Advance... there's at least one more char in the input string?
                      {
                         addR = TRUE;                                             // then add a new thread to 'next' applying existing CharBox start at this new char.
-                        dfltMatchCfg.clone = TRUE;
+                        dfltMatchCfg.clone = TRUE;                               // Spawning a new thread so clone match list of the existing thread (instead of referencing it).
                         addThread(next,
                            newThread(pc, cBoxStart+1, loopCnt, gs, &dfltMatchCfg,
-                              !matchedMinimal && prog->buf[pc+1].opcode == OpCode_CharBox
-                                 ? _EatMismatches
-                                 : _StopAtMismatch) );
+                              matchedMinimal ?                                   // Already got a (minimal) match?
+                                 _StopAtMismatch : _EatMismatches ) );           // then end this thread upon hitting a mismatch -
                      }
                   }
                   else                                                           // else failed to match this 1st Chars_Box?
@@ -803,6 +802,12 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
             case OpCode_Match:
                rtn = E_RegexRtn_Match;
+
+               /* Mark that we got at least a minimal match. After this any (live) thread will terminate
+                  on a mismatch. This must be so otherwise at least one thread will (needlessly) eat mismatches
+                  until the end of input - and then report 'E_RegexRtn_NoMatch' (above).
+               */
+               matchedMinimal = TRUE;
 
                /* If caller supplied a hook for a match list then we will have malloced for a match list.
                   Fill the list with the matches which this thread found. If we are looking for a
