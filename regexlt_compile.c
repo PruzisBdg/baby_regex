@@ -23,12 +23,18 @@
 #define dbgPrint           regexlt_dbgPrint
 
 
-/* --------------------------------- CharClass_New ----------------------------------- */
+/* --------------------------------- CharClass_New -----------------------------------
 
+   Return an empty 'S_C8bag' (to hold a char class). Return NULL if there's no more
+   empties available - because pre-scan under-counted the number of classes in the regex.
+*/
 PUBLIC S_C8bag * CharClass_New(S_ClassesList *h)
 {
-   memset(&h->ccs[h->put], 0, sizeof(S_C8bag));
-   return &h->ccs[h->put++];
+   if(h->put >= h->size) {                         // Already took all available empties?
+      return NULL; }                               // then fail -> NULL.
+   else{
+      memset(&h->ccs[h->put], 0, sizeof(S_C8bag)); // else clear out the S_C8Bag.
+      return &h->ccs[h->put++]; }                  // return it. Advance get.
 }
 
 
@@ -295,7 +301,6 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                      }                                               // ...the escape, e.g '\d' will go into its own Box, following a '_Split' which holds it's repeat count..
                      else                                            // else we add to the current Chars-Box
                      {
-//                        if( handleEscapedNonWhtSpc(cl, sg, &cb->put, *(++(*regexStr)) ) == FALSE)   // Was not a legal escaped thingy?
                         if( handleEscapedNonWhtSpc(cl, cb, *(++(*regexStr)) ) == FALSE)   // Was not a legal escaped thingy?
                            { return FALSE; }                         // then parse fail.
                         else
@@ -538,7 +543,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
    C8 const *rgxP = regexStr;          // From the start of the regex.
    C8 const *segStart;                 // Pins the start of a character segment.
    BOOL forked = FALSE;                // Until we meet and alternate '|'
-   BOOL leftZero = FALSE;
+   BOOL eatYet = FALSE;
    U8 boxesToRight;
    BOOL ate1st = FALSE;
    BOOL gotCharBox = FALSE;
@@ -586,7 +591,10 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                addSplit(prog, +1, +2);                   // Either try next or skip it..
                attachCharBox(prog,                       // This is 'next'
                   lookaheadFor_GroupClose(&cb, rgxP));   // If ')' after the '?' then this CharBox is/ends a subgroup. Close the subgroup.
-               leftZero = TRUE;
+
+               if(prog->instrs.put == 1 &&               // The Chars-Box which preceded this '*' (zero-or-) was the 1st? AND
+                  prog->instrs.buf[0].charBox.eatUntilMatch == TRUE)  // that CBox was an 'eatUntilMatch'?
+                  { eatYet = TRUE; }                     // then the CBox to right of '*' will be too. - because it's a 'zero-or'.
                rgxP++;
                break;
 
@@ -599,8 +607,10 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                      lookaheadFor_GroupClose(&cb, rgxP)); } // If ')' after the '*' then close current subgroup at the CharBox.
 
                addJump(prog, MinS16(-2, prevCBox(prog)));   // then JMP back to retry the previous CBox (but not the one we added, which is '-1')
-               //addJump(prog, prevCBox(prog));
-               //leftZero = TRUE;
+
+               if(prog->instrs.put == 1 &&                  // The Chars-Box which preceded this '*' (zero-or-) was the 1st? AND
+                  prog->instrs.buf[0].charBox.eatUntilMatch == TRUE)  // that 1st CBox was an 'eatUntilMatch'?
+                  { eatYet = TRUE; }                        // then the one right of '*' will be too. - because it's a 'zero-or'.
                rgxP++;
                break;
 
@@ -673,8 +683,9 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                else                                      // else 'cb' has the chars (and 'rs' is advanced to next un-read input)
                {
                   gotCharBox = TRUE;                     // Mark that there's an assembled Box.
-                  if(firstOp == 0)
-                     { firstOp = rightOperator(segStart); }
+
+                  if(firstOp == 0)                             // Didn't already get the 1st right operator?
+                     { firstOp = rightOperator(segStart); }    // then find it now.
 
                   /* If 1st operator is '|' (alternation) then, because '|' is greedy (left and right), we must
                      dump mismatches to the 1st of multiple CharBox to the left of '|' until we match all
@@ -726,11 +737,9 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                      }
                   }
 
-                  if(leftZero == TRUE)
-                  {
-                     leftZero = FALSE;
-                     cb.eatUntilMatch = TRUE;
-                  }
+                  if(eatYet == TRUE) {
+                     eatYet = FALSE;
+                     cb.eatUntilMatch = TRUE; }
 
                   if(cb.opensGroup)                               // This CharBox opens a subgroup?
                   {
