@@ -51,9 +51,13 @@ typedef enum { E_Continue = 0, E_Complete = 1, E_Fail } T_ParseRtn;
 
 typedef struct {
    C8    prevCh;
-   BOOL  range;      // Previous ch was a '-', meaning we are parsing
-   BOOL  negate;     // Previous ch was '^', meaning following char is a negation.
-   BOOL  esc;        // an escape '\', to be followed by a class specifier.
+   BOOL  range,            // Previous ch was a '-', meaning we are parsing
+         negate,           // Previous ch was '^', meaning following char is a negation.
+         esc;              // an escape '\', to be followed by a class specifier.
+   struct {
+      U8 hi;
+      U8 step;
+   } hex;
 } S_ParseCharClass;
 
 PUBLIC void       regexlt_classParser_Init(S_ParseCharClass *p);
