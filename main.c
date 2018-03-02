@@ -74,7 +74,7 @@ typedef struct {
 } S_Test;
 
 
-#if 1
+#if 0
 PRIVATE RegexLT_S_Cfg cfg = {
    .getMem        = getMemCleared,
    .free          = myFree,
@@ -156,8 +156,9 @@ PRIVATE RegexLT_S_Cfg cfg = {
 };
 
 PRIVATE S_Test const tests[] = {
-//   { " \\d{5}-?\\d{4}",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
-   { "[ps]dog",      "lapdogs",              E_RegexRtn_Match,    {1, {{2,4}}}         },
+   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
+   //{ "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
+//   { "[ps]dog",      "lapdogs",              E_RegexRtn_Match,    {1, {{2,4}}}         },
 };
 
 #endif

@@ -211,7 +211,9 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
    T_ParseRtn rtn;
 
    S_Chars * sg = cb->segs;
-   cb->put = 0;                     // Fill 'cb' starting at cb->buf[0].
+   cb->put = 0;                           // Fill 'cb' starting at cb->buf[0].
+   sg[cb->put].opcode = OpCode_Null;      // Until we fill it this 1st segment has no opcode, and...
+   sg[cb->put].payload.chars.len = 0;     // and, for a chars-segment, no chars either.
 
    /* If got a '(' rightaway. then this chars-list either opens a subgroup or will be an
       an entire subgroup.
@@ -290,9 +292,14 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                      break;
 
                   case '\\':     // e.g '\d','\w', anything which wasn't captured by translateEscapedWhiteSpace() (above).
-                     if( cb->put > 0 &&                              // Already building some Chars-Box? AND
-                        isaRepeat( (*regexStr)+2 ))                  // Repeat operator e.g '+' or '{3}' follows this e.g '\d'.
-                     {                                               // then finish the Chars-Box we have so far....
+                     if(( cb->put > 0 ||                             // Already completed a chars-segment? OR
+                           (
+                              sg[0].opcode == OpCode_Chars &&        // If 1st segment is a chars-list? AND
+                              sg[0].payload.chars.len > 0            // we already have at least 1 char in that list? (we should, otherwise it would be OpCode_Null)
+                           )
+                        ) &&                                         // AND...
+                        isaRepeat( (*regexStr)+2 ))                  // ...repeat operator e.g '+' or '{3}' follows this e.g '\d'.
+                     {                                               // then repeat operator applies just to the escaped \\. Finish the Chars-Box we have so far....
                         if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
                            { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_Chars in prescan.
                         sg[cb->put].opcode = OpCode_Match;           // ...and terminate the CBox.
