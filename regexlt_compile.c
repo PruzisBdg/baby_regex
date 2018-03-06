@@ -337,15 +337,15 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                            C8 const * rr = (*regexStr)+1;
 
                            if(isaRepeat(rr))                         // A repeat-operator e.g '+' follows the current char?
-                           {
-                              if( !wrNextSeg(cb, OpCode_Match))      // then finish the Box we have so far.
-                                 {return FALSE; }
-                              cb->len = cb->put+1;
-                              return TRUE;                           // '*regexStr' is not advanced; so current char will be pending and go into it;s own Box.
+                           {                                         // then finish the Box we have so far.
+                              if( !wrNextSeg(cb, OpCode_Match))      // Add 'Match' terminator. No?
+                                 {return FALSE; }                    // cuz prescan did't reserve enuf heap. Compile fails.
+                              cb->len = cb->put+1;                   // else success. CBox length is now this.
+                              return TRUE;                           // '*regexStr' is not advanced; so current char will be pending and go into it's own Box.
                            }
                            else                                      // else next char is not a repeat-operator.
                            {
-                              sg[cb->put].payload.chars.len++;           // So add current char to segment; by incrementing segment length.
+                              sg[cb->put].payload.chars.len++;       // So add current char to segment; by incrementing segment length.
                            }
                         }
                         else                                         // else this opcode is Null, meaning empty.
@@ -750,10 +750,11 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
 
                   if(cb.opensGroup)                               // This CharBox opens a subgroup?
                   {
-                     if(rightOperator(rgxP) == '|')               // Next operator (somewhere to the right) is '|'?
+                     C8 ch = rightOperator(rgxP);
+                     if(ch == '|' || ch == '?')                   // Next operator (somewhere to the right) is '|'?
                      {
                         nopMark = prog->instrs.put;               // then mark this spot
-                        addNOP(prog);                             // and reserve a slot ofr the 'SPlit' which be inserted when we reach the '|'.
+                        addNOP(prog);                             // and reserve a slot ofter the 'SPlit' which be inserted when we reach the '|'.
                      }
                   }
 

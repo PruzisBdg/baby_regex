@@ -74,7 +74,7 @@ typedef struct {
 } S_Test;
 
 
-#if 0
+#if 1
 PRIVATE RegexLT_S_Cfg cfg = {
    .getMem        = getMemCleared,
    .free          = myFree,
@@ -156,9 +156,10 @@ PRIVATE RegexLT_S_Cfg cfg = {
 };
 
 PRIVATE S_Test const tests[] = {
-   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
+//   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
    //{ "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
 //   { "[ps]dog",      "lapdogs",              E_RegexRtn_Match,    {1, {{2,4}}}         },
+   { "cat|d(og)",    "cutecats",             E_RegexRtn_Match,    {1, {{4,3}}}         },
 };
 
 #endif
@@ -191,12 +192,12 @@ PRIVATE S_TestRightOperator const rightOpTests[] = {
    { "a\\+",    '$' },
    { "a\\?",    '$' },
    { "a\\*",    '$' },
-   { "a\\{",    '$' },               if( !foundEarlierDuplicate(curr, ti))
+   { "a\\{",    '$' },
 
 
    // Post operator captures previous char.
    { "ab+",     'E' },
-   { "ab?",     'E' },                  thrd->matches.ms[0].len = cBoxStart - str - thrd->matches.ms[0].start;
+   { "ab?",     'E' },
 
    { "ab*",     'E' },
    { "ab{2}",   'E' },
@@ -252,9 +253,11 @@ PRIVATE S_TestRightOperator const rightOpTests[] = {
 };
 
 PRIVATE S_TestRightOperator const ropTstB[] = {
-   { "(\\d)",    '$' },
+   { "abc",    '$' },
+   { "ab+",     'E' },
 };
 
+//#define _ropTsts ropTstB
 #define _ropTsts rightOpTests
 
 PRIVATE void testRightOp(S_TestRightOperator const *tbl, U16 tblSize)
