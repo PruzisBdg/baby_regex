@@ -268,8 +268,8 @@ PRIVATE S_ThreadList * threadList(T_ThrdListIdx len)
    S_ThreadList *lst;
 
    S_TryMalloc toMalloc[] = {
-      { (void**)&thrd, (size_t)len * sizeof(S_Thread)    },
-      { (void**)&lst, (size_t)len * sizeof(S_ThreadList) }};
+      { (void**)&thrd, (size_t)len * sizeof(S_Thread)    },       // All these threads...
+      { (void**)&lst, 1            * sizeof(S_ThreadList) }};     // ...held in 1 list.
 
    if( getMemMultiple(toMalloc, RECORDS_IN(toMalloc)) == FALSE)
       { return NULL; }        // ... but if a malloc() failed return NULL.
