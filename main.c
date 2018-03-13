@@ -157,9 +157,11 @@ PRIVATE RegexLT_S_Cfg cfg = {
 
 PRIVATE S_Test const tests[] = {
 //   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
+   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
+//   { "\\D(\\d{5}(-\\d{4})?)",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
    //{ "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
 //   { "[ps]dog",      "lapdogs",              E_RegexRtn_Match,    {1, {{2,4}}}         },
-   { "cat|d(og)",    "cutecats",             E_RegexRtn_Match,    {1, {{4,3}}}         },
+//   { "cat|d(og)",    "cutecats",             E_RegexRtn_Match,    {1, {{4,3}}}         },
 };
 
 #endif
