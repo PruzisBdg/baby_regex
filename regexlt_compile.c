@@ -359,7 +359,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                break;
 
             case OpCode_Class:                        // --- Parsing a character class definition e.g '[0-9A-.....'
-               if( (rtn = classParser_AddCh(&parseClass, sg[cb->put].payload.charClass, ch)) == E_Fail)
+               if( (rtn = classParser_AddCh(&parseClass, sg[cb->put].payload.charClass, &ch)) == E_Fail)
                {
                   printf("unterminated char class\r\n");
                   return FALSE;

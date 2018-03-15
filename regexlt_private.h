@@ -62,7 +62,7 @@ typedef struct {
 
 PUBLIC void       regexlt_classParser_Init(S_ParseCharClass *p);
 PUBLIC BOOL       regexlt_classParser_AddDef(S_ParseCharClass *p, S_C8bag *cc, C8 const *def);
-PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8 newCh);
+PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8 const *src);
 PUBLIC C8 const * regexlt_getCharClassByKey(C8 key);
 
 typedef U8 T_RepeatCnt;    // Regex repeat counts e.g [Ha ]{3} = 'Ha Ha Ha '

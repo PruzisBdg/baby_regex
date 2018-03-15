@@ -74,7 +74,7 @@ typedef struct {
 } S_Test;
 
 
-#if 1
+#if 0
 PRIVATE RegexLT_S_Cfg cfg = {
    .getMem        = getMemCleared,
    .free          = myFree,

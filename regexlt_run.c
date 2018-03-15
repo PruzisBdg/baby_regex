@@ -871,7 +871,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      then we have matched every regex element at least once, and so have at least a minimal match.
                      Once there is a minimal match, if any other search paths are 'eating' leading mismatches
                      they must stop doing so. Otherwise these searches will continue past this 1st match and find
-                     any subsequent ones. Meaning, e.g ...
+                      any subsequent ones. Meaning, e.g ...
 
                         34+' will bypass the 1st '344' in '1234411134444' and continue to the 2nd, '34444'.
 

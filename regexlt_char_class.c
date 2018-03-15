@@ -84,8 +84,9 @@ PUBLIC void addOrRemove(S_ParseCharClass *p, S_C8bag *cc, C8 newCh)
    illegal, or E_Continue if 'newCh' has been added and we need more input to complete the
    class.
 */
-PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8 newCh)
+PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8 const *src)
 {
+   C8 newCh = *src;
    switch(newCh)
    {
       case '\0':                                      // ... Incomplete class expression -> always fail
@@ -177,8 +178,7 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
                   S_ParseCharClass pc;                         // We are already inside a class parser; make a fresh private one.
                   classParser_Init(&pc);
                   if( classParser_AddDef(&pc, cc, def) == TRUE ) {   // Made the new class?
-                     break;                                    // success, continue
-                  }
+                     break; }                                  // success, continue
                }
                return E_Fail;
             }
@@ -187,8 +187,7 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
          {                                                     // means we start with everything and will subtract members
             C8bag_Invert(cc);                                  // so invert the initial empty class to make a full one.
          }
-         else if(p->range == TRUE)                             // We were specifying a range?
-         {
+         else if(p->range == TRUE) {                            // We were specifying a range?
             p->range = FALSE;                                  // then we close it now.
 
             if(newCh < p->prevCh)                              // End-of-range is less than start?
@@ -197,11 +196,12 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
                if(p->negate == TRUE)                           // Remove these chars from the range specified so far?
                   { C8bag_RemoveRange(cc, p->prevCh, newCh); p->negate = FALSE; }    // This negation is done.
                else                                            // else add to any specified so far.
-                  { C8bag_AddRange(cc, p->prevCh, newCh); }}
-         }
-         else                                                  // else not a range; just a lone char.
-            { addOrRemove(p, cc, newCh); }
-         p->prevCh = newCh;                                    // Remember this char for next time.
+                  { C8bag_AddRange(cc, p->prevCh, newCh); }}}
+
+         else if(*(src+1) != '-')                              // else not end of a range. NOT the start of a range either?
+            { addOrRemove(p, cc, newCh); }                     // then just a lone char; remove it from the range.
+
+         p->prevCh = newCh;                                    // Remember this char for next time - e.g if it's start of a range.
    }
    return E_Continue;   // Didn't fail or complete above, so continue.
 }
@@ -217,7 +217,7 @@ PUBLIC BOOL regexlt_classParser_AddDef(S_ParseCharClass *p, S_C8bag *cc, C8 cons
    {
       def++;                                    // else proceed to 1st char past opening '['...
       T_ParseRtn rtn;                           // and process the class specifier...
-      while( (rtn = classParser_AddCh(p, cc, *def)) == E_Continue)
+      while( (rtn = classParser_AddCh(p, cc, def)) == E_Continue)
          { def++;}                              // ... a char at a time, until Fail or Done
       return rtn == E_Complete ? TRUE : FALSE;
    }
