@@ -181,10 +181,6 @@ PUBLIC T_RegexRtn regexlt_runCompiledRegex(S_InstrList *prog, C8 const *str, Reg
 
 extern RegexLT_S_Cfg const *regexlt_cfg;
 
-PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
-PUBLIC void regexlt_safeFreeList(void **lst, U8 listSize);
-PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
-
 PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxChars);
 
 PUBLIC C8 rightOperator(C8 const *rgx);
