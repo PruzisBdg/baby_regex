@@ -166,6 +166,7 @@ typedef struct {
    S_InstrList    instrs;           // Instructions to execute, terminated by 'Match'
    S_CharsList    chars;            // One or more lists of chars and char classes, each attached to a 'Char' instruction, terminated by 'Match'.
    S_ClassesList  classes;          // Zero or more character classes, each a part or all of a S_CharsList
+   U16            subExprs;         // 1 + number of possible sub-matches, Used to size the match-list.
 } S_Program;
 
 PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr);

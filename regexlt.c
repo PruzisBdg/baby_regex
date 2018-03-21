@@ -25,19 +25,9 @@
 |  - Empty string is no match.
 |
 |
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
 |  Public:
 |     RegexLT_Init()
+|     RegexLT_Compile()
 |     RegexLT_Match()
 |     RegexLT_Replace()
 |     RegexLT_PrintMatchList()
@@ -191,6 +181,75 @@ PRIVATE S_StrChkRtns inputOK(C8 const *inStr, U16 maxLen)
 PUBLIC void RegexLT_Init(RegexLT_S_Cfg const *cfg) { regexlt_cfg = cfg; }
 
 
+/* ---------------------------------------- RegexLT_Compile ------------------------------------------------
+
+   Compile 'regexStr' returning a Program in 'progV'. If success, returns 'E_RegexRtn_OK'
+   (and a valid Program); otherwise an error code and 'progV' <- NULL.
+*/
+PUBLIC T_RegexRtn RegexLT_Compile(C8 const *regexStr, void **progV)
+{
+   if(regexlt_cfg == NULL)                                  // User did not supply a cfg with RegexLT_Init().
+      { return E_RegexRtn_BadCfg; }                         // then go no further.
+
+   S_RegexStats stats = regexlt_prescan(regexStr);          // Prescan regex; check for gross errors and count resources needed to compile it.
+
+   if(stats.legal == FALSE)                                 // Regex was malformed?
+   {
+      return E_RegexRtn_BadExpr;
+   }
+   else                                                     // else 'regex' is free of gross errors.
+   {
+      if(regexlt_cfg->getMem == NULL)                       // Did not supply user getMem() (via RegexLT_Init() )
+      {
+         return E_RegexRtn_BadCfg;
+      }
+      else                                                  // else (try to) malloc() what we need and match against 'regex'
+      {
+         T_RegexRtn rtn;
+
+         // Memory for the Program we will compile to.
+         S_TryMalloc toMalloc[] = {
+            { progV,                           sizeof(S_Program) },     // The Program itself, and, attached to it...
+            { (void**)&((S_Program*)(*progV))->chars.buf,    (U16)stats.charboxes    * sizeof(S_Chars) },    // Chars-Boxes
+            { (void**)&((S_Program*)(*progV))->instrs.buf,   (U16)stats.instructions * sizeof(S_Instr) },    // Instructions (list)
+            { (void**)&((S_Program*)(*progV))->classes.ccs,  (U16)stats.classes      * sizeof(S_C8bag) }};   // any Char-classes
+
+         if( getMemMultiple(toMalloc, RECORDS_IN(toMalloc)) == FALSE)   // Oops!?
+         {
+            rtn = E_RegexRtn_OutOfMemory;                   // Some malloc() error.
+         }
+         else                                               // otherwise malloc() success.
+         {
+            S_Program *prog = *progV;
+
+            /* Fill in the sizes of the as-yet empty stores we malloced for 'prog'. These are
+               hard fill-limits for the compiler.
+            */
+            prog->classes.size = stats.classes;
+            prog->chars.size = stats.charboxes;
+            prog->instrs.size = stats.instructions;
+            prog->subExprs = stats.subExprs;
+
+            rtn = compileRegex(prog, regexStr) == TRUE      // Compile 'regexStr' into 'prog'
+               ? E_RegexRtn_OK
+               : E_RegexRtn_CompileFailed;
+
+            printProgram(prog);
+
+            if(rtn != E_RegexRtn_OK)                        // Compile failed?
+            {                                               // then free() 'prog' now; otherwise it's returned to caller.
+               void *toFree[] = { prog->classes.ccs, prog->instrs.buf, prog->chars.buf };
+               safeFreeList(toFree, RECORDS_IN(toFree));
+               *progV = NULL;
+            }
+         }
+         return rtn;
+      }
+   }
+}
+
+
+#if 0
 /* -------------------------------- RegexLT_Match --------------------------------------
 
    Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'.
@@ -233,9 +292,13 @@ PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_
          }
          else                                               // otherwise we can compile and run 'regex'.
          {
+            /* Fill in the sizes of the as-yet empty stores we malloced for 'prog'. These are
+               hard fill-limits for the compiler.
+            */
             prog.classes.size = stats.classes;
             prog.chars.size = stats.charboxes;
             prog.instrs.size = stats.instructions;
+            prog.subExprs = stats.subExprs;
             prog.instrs.maxRunCnt = strChk.len + 10;        // Thread run-limit is string size plus for some anchors.
 
             if( compileRegex(&prog, regexStr) == FALSE)     // Compile 'regexStr' into 'prog'. Failed?
@@ -273,6 +336,67 @@ FreeAndQuit:
       }
    }
 }
+
+#else
+
+/* --------------------------------------- RegexLT_FreeProgram ---------------------------------- */
+
+PUBLIC T_RegexRtn RegexLT_FreeProgram(void *prog)
+{
+   void *toFree[] = { ((S_Program*)prog)->classes.ccs, ((S_Program*)prog)->instrs.buf, ((S_Program*)prog)->chars.buf };
+   safeFreeList(toFree, RECORDS_IN(toFree));
+   return E_RegexRtn_OK;
+}
+
+/* -------------------------------- RegexLT_Match --------------------------------------
+
+   Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'.
+*/
+PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_MatchList **ml, RegexLT_T_Flags flags)
+{
+   S_StrChkRtns strChk = inputOK(srcStr, regexlt_cfg->maxStrLen);    // Check for a legal source string.
+
+   if(strChk.ok == FALSE )                                           // Too long? Non-printables maybe, depending on our rules?
+      { return E_RegexRtn_BadInput; }                                // then bail rightaway.
+   else
+   {
+      T_RegexRtn rtn;
+      S_Program * prog;                                              // Compiled 'regex' will attached to this.
+                                                                     // Compile 'regexStr'...
+      if( E_RegexRtn_OK != (rtn = RegexLT_Compile(regexStr, (void**)&prog)))   // ... failed?
+      {
+         return rtn;                                                 // then return why.
+      }
+      else                                                           // else 'prog' has a valid program
+      {
+         prog->instrs.maxRunCnt = strChk.len + 10;                   // Thread run-limit is string size plus for some anchors.
+
+         // First, if caller supplies a hook to a match-list then make one.
+         if(ml != NULL) {
+            if(prog->subExprs > regexlt_cfg->maxSubmatches) {
+               rtn = E_RegexRtn_BadExpr;
+               goto FreeAndQuit;
+               }
+               else if( (*ml = newMatchList(prog->subExprs)) == NULL) {    // Big enuf to hold the global match plus sub-groups?
+                  rtn = E_RegexRtn_OutOfMemory;
+                  goto FreeAndQuit; }
+            }
+
+         /* Run the compiled program 'prog.instrs' on 'srcStr' with matches written to 'ml', if this is supplied.
+            Any thread may have up to a global match plus a match for each sub-expression. So reserve 'subExprs'+1.
+         */
+         U8  matchesPerThread = prog->subExprs+2;
+         rtn = runCompiledRegex( &prog->instrs, srcStr, ml, matchesPerThread, flags);
+   FreeAndQuit:
+         RegexLT_FreeProgram((void*)prog);                          // Free() 'prog' (which) was malloced in RegexLT_Compile().
+         return rtn;
+      }
+   }
+}
+
+
+#endif
+
 
 /* ----------------------------------- escCharToASCII ----------------------------------- */
 

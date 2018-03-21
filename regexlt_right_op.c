@@ -75,14 +75,14 @@ PUBLIC C8 rightOperator(C8 const *rgx)
          esc = FALSE;                                 // then cancel escape; it applies just to this char, which we process now.
          if(inSub == 0) {                             // Not currently nested?
             if(!inCh) {                               // Starting char sequence?
-               inCh = TRUE;
-               grpCnt++;                              // then we have one more char-group
+               inCh = TRUE;                           // then mark that we are in a char sequence...
+               grpCnt++;                              // ...and we have one more char-group
             }
             else {                                    // otherwise already in char-sequence.
                if( isPostOpCh(*(rp+1))) {             // Next char is a post-op, '+','*' etc?
-                  grpCnt++;
-                  if( *(rp+1) == '{') {
-                     rp = toClosesRpt(rp+1); }}}      // then post-operator binds this char, so previous chars make one more char-group.
+                  grpCnt++;	                          // then post-operator binds this char, so previous chars make one more char-group.
+                  if( *(rp+1) == '{') {               // That post-op is a repeat e.g '{3,4}'?
+                     rp = toClosesRpt(rp+1); }}}      // then advance to the closing '}'.
             }
          }
       else {                                          // else this char is not escaped; must look for groups, classes etc.
@@ -90,9 +90,9 @@ PUBLIC C8 rightOperator(C8 const *rgx)
             if(ch == ']') {                           // Closing ']'?
                inClass = FALSE;                       // then we are out of the class-specifier.
                if( isPostOpCh(*(rp+1))) {             // Next char is a post-op, '+','*' etc?
-                  grpCnt++;
-                  if( *(rp+1) == '{') {
-                     rp = toClosesRpt(rp+1); }}}      // then post-operator binds this char-class, so previous chars make one more char-group.
+                  grpCnt++;                           // then post-operator binds this char-class, so previous chars make one more char-group.
+                  if( *(rp+1) == '{') {               // That post-op is a repeat e.g '{3,4}'?
+                     rp = toClosesRpt(rp+1); }}}      // then advance to the closing '}'.
          }
          else {                                       // else not in class specifier
             if(ch == '[') {                           // Opening '['?
@@ -111,8 +111,8 @@ PUBLIC C8 rightOperator(C8 const *rgx)
                }
                else {                                 // else didn't enter subgroup(s)
                   if(ch == ')') {                     // But, got a ')'? so must have started inside one.
-                     if(inSub > 0) {
-                        inSub--;}
+                     if(inSub > 0) {                  
+                        inSub--;}                     // Hmmm... think this is redundant 'inSub' is already 0 (above)
                   }
                   else if(ch == '(') {                // Opening '('
                      inSub = 1;                       // we are instead down in a subgroup
