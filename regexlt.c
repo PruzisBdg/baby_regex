@@ -248,95 +248,6 @@ PUBLIC T_RegexRtn RegexLT_Compile(C8 const *regexStr, void **progV)
 } // RegexLT_Compile()
 
 
-#if 0
-/* -------------------------------- RegexLT_Match --------------------------------------
-
-   Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'.
-*/
-PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_MatchList **ml, RegexLT_T_Flags flags)
-{
-   if(regexlt_cfg == NULL)                                  // User did not supply a cfg with RegexLT_Init().
-      { return E_RegexRtn_BadCfg; }                         // then go no further.
-
-   S_StrChkRtns strChk = inputOK(srcStr, regexlt_cfg->maxStrLen);
-
-   if(strChk.ok == FALSE )
-      { return E_RegexRtn_BadInput; }
-
-   S_RegexStats stats = regexlt_prescan(regexStr);          // Prescan regex; check for gross errors and count resources needed to compile it.
-
-   if(stats.legal == FALSE)                                 // Regex was malformed?
-   {
-      return E_RegexRtn_BadExpr;
-   }
-   else                                                     // else 'regex' is free of gross errors.
-   {
-      if(regexlt_cfg->getMem == NULL)                       // Did not supply user getMem() (via RegexLT_Init() )
-      {
-         return E_RegexRtn_BadCfg;
-      }
-      else                                                  // else (try to) malloc() what we need and match against 'regex'
-      {
-         T_RegexRtn rtn;
-         S_Program prog;                                    // 'regex' will be compiled into here.
-
-         S_TryMalloc toMalloc[] = {                         // Memory which the compiler needs
-            { (void**)&prog.chars.buf,    (U16)stats.charboxes    * sizeof(S_Chars) },
-            { (void**)&prog.instrs.buf,   (U16)stats.instructions * sizeof(S_Instr)},
-            { (void**)&prog.classes.ccs,  (U16)stats.classes     * sizeof(S_C8bag) } };
-
-         if( getMemMultiple(toMalloc, RECORDS_IN(toMalloc)) == FALSE)   // Oops!?
-         {
-            rtn = E_RegexRtn_OutOfMemory;                   // Some malloc() error.
-         }
-         else                                               // otherwise we can compile and run 'regex'.
-         {
-            /* Fill in the sizes of the as-yet empty stores we malloced for 'prog'. These are
-               hard fill-limits for the compiler.
-            */
-            prog.classes.size = stats.classes;
-            prog.chars.size = stats.charboxes;
-            prog.instrs.size = stats.instructions;
-            prog.subExprs = stats.subExprs;
-            prog.instrs.maxRunCnt = strChk.len + 10;        // Thread run-limit is string size plus for some anchors.
-
-            if( compileRegex(&prog, regexStr) == FALSE)     // Compile 'regexStr' into 'prog'. Failed?
-            {
-               rtn = E_RegexRtn_CompileFailed;
-               printProgram(&prog);
-            }
-            else                                            // else there's a program to run.
-            {
-               // First, if caller supplies a hook to a match-list then make one.
-               if(ml != NULL) {
-                  if(stats.subExprs > regexlt_cfg->maxSubmatches) {
-                     rtn = E_RegexRtn_BadExpr;
-                     goto FreeAndQuit;
-                     }
-                     else if( (*ml = newMatchList(stats.subExprs)) == NULL) {
-                        rtn = E_RegexRtn_OutOfMemory;
-                        goto FreeAndQuit; }                 // Big enuf to hold the global match plus sub-groups.
-                  }
-
-               /* Run the compiled program 'prog.instrs' on 'srcStr' with matches written to 'ml', if this is supplied.
-                  Any thread may have up to a global match plus a match for each sub-expression. So reserve 'subExprs'+1.
-               */
-               printProgram(&prog);                         // Run 'prog' on 'srcStr'; matches into 'ml'.
-               U8  matchesPerThread = stats.subExprs+2;
-               rtn = runCompiledRegex( &prog.instrs, srcStr, ml, matchesPerThread, flags);
-            }
-         }
-         // Done. Free() memory we malloced(), excepting the matches. These are for the caller.
-         // Free in reverse order, to be tidy, though it's not essential.
-         void *toFree[] = { prog.classes.ccs, prog.instrs.buf, prog.chars.buf };
-FreeAndQuit:
-         safeFreeList(toFree, RECORDS_IN(toFree));
-         return rtn;
-      }
-   }
-}
-
-#else
 
 /* --------------------------------------- RegexLT_FreeProgram ---------------------------------- */
 
@@ -347,11 +258,9 @@ PUBLIC T_RegexRtn RegexLT_FreeProgram(void *prog)
    return E_RegexRtn_OK;
 }
 
-/* -------------------------------- RegexLT_Match --------------------------------------
+/* ----------------------------------------- RegexLT_MatchProg ------------------------------------- */
 
-   Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'.
-*/
-PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_MatchList **ml, RegexLT_T_Flags flags)
+PUBLIC T_RegexRtn RegexLT_MatchProg(void *prog, C8 const *srcStr, RegexLT_S_MatchList **ml, RegexLT_T_Flags flags)
 {
    S_StrChkRtns strChk = inputOK(srcStr, regexlt_cfg->maxStrLen);    // Check for a legal source string.
 
@@ -359,43 +268,47 @@ PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_
       { return E_RegexRtn_BadInput; }                                // then bail rightaway.
    else
    {
-      T_RegexRtn rtn;
-      S_Program * prog;                                              // Compiled 'regex' will attached to this.
+      #define _prog ((S_Program*)(prog))
                                                                      // Compile 'regexStr'...
-      if( E_RegexRtn_OK != (rtn = RegexLT_Compile(regexStr, (void**)&prog)))   // ... failed?
-      {
-         return rtn;                                                 // then return why.
-      }
-      else                                                           // else 'prog' has a valid program
-      {
-         prog->instrs.maxRunCnt = strChk.len + 10;                   // Thread run-limit is string size plus for some anchors.
+      _prog->instrs.maxRunCnt = strChk.len + 10;                     // Thread run-limit is string size plus for some anchors.
 
-         // First, if caller supplies a hook to a match-list then make one.
-         if(ml != NULL) {
-            if(prog->subExprs > regexlt_cfg->maxSubmatches) {
-               rtn = E_RegexRtn_BadExpr;
-               goto FreeAndQuit;
-               }
-               else if( (*ml = newMatchList(prog->subExprs)) == NULL) {    // Big enuf to hold the global match plus sub-groups?
-                  rtn = E_RegexRtn_OutOfMemory;
-                  goto FreeAndQuit; }
-            }
+      // First, if caller supplies a hook to a match-list then make one.
+      if(ml != NULL) {
+         if(_prog->subExprs > regexlt_cfg->maxSubmatches) {
+            return E_RegexRtn_BadExpr; }
+         else if( (*ml = newMatchList(_prog->subExprs)) == NULL) {   // Big enuf to hold the global match plus sub-groups?
+            return E_RegexRtn_OutOfMemory; }}
 
-         /* Run the compiled program 'prog.instrs' on 'srcStr' with matches written to 'ml', if this is supplied.
-            Any thread may have up to a global match plus a match for each sub-expression. So reserve 'subExprs'+1.
-         */
-         U8  matchesPerThread = prog->subExprs+2;
-         rtn = runCompiledRegex( &prog->instrs, srcStr, ml, matchesPerThread, flags);
-   FreeAndQuit:
-         RegexLT_FreeProgram((void*)prog);                          // Free() 'prog' (which) was malloced in RegexLT_Compile().
-         return rtn;
-      }
+      /* Run the compiled program 'prog.instrs' on 'srcStr' with matches written to 'ml', if this is supplied.
+         Any thread may have up to a global match plus a match for each sub-expression. So reserve 'subExprs'+1.
+      */
+      U8  matchesPerThread = _prog->subExprs+2;
+      return runCompiledRegex( &_prog->instrs, srcStr, ml, matchesPerThread, flags);
    }
 }
 
+/* -------------------------------- RegexLT_Match --------------------------------------
 
-#endif
+   Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'.
+*/
+PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_MatchList **ml, RegexLT_T_Flags flags)
+{
+   S_StrChkRtns strChk = inputOK(srcStr, regexlt_cfg->maxStrLen);             // Check for a legal source string.
 
+   if(strChk.ok == FALSE )                                                    // Too long? Non-printables maybe, depending on our rules?
+      { return E_RegexRtn_BadInput; }                                         // then bail rightaway.
+   else                                                                       // else input string is OK. Continue.
+   {
+      T_RegexRtn rtn; S_Program * prog;                                       // Compiled 'regex' will be attached to this.
+
+      if( E_RegexRtn_OK != (rtn = RegexLT_Compile(regexStr, (void**)&prog)))   // Compile 'regexStr'... failed?
+         { return rtn; }                                                      // then return why.
+      else  {                                                                  // else 'prog' has a valid program
+         rtn =  RegexLT_MatchProg(prog, srcStr, ml, flags);                   // Run 'srcStr' thru 'prog'
+         RegexLT_FreeProgram(prog);                                           // One-time Match() so free() 'prog' (which) was malloced in RegexLT_Compile().
+         return rtn; }
+   }
+}
 
 /* ----------------------------------- escCharToASCII ----------------------------------- */
 
@@ -423,64 +336,101 @@ PRIVATE C8 * appendMatch(C8 *out, RegexLT_S_MatchList const *ml, U8 matchIdx)
    return out;
 }
 
-/* ------------------------------------------- RegexLT_Replace -----------------------------------------
-
-
-*/
 PRIVATE U8 toNum(C8 digit) { return digit - '0'; }
 
-PUBLIC T_RegexRtn RegexLT_Replace(C8 const *searchRegex, C8 const *inStr, C8 const *replaceStr, C8 *out)
+/* ---------------------------------------- replace ------------------------------------------
+
+   Given 'ml' and a regex 'replaceStr', produce a replacement in 'out'.
+
+   'ml' references both the source string and the matches within it. So the source string must
+   persist for this call().
+*/
+PRIVATE T_RegexRtn replace(RegexLT_S_MatchList *ml, C8 const *replaceStr, C8 *out)
 {
-   T_RegexRtn           rtn;
-   RegexLT_S_MatchList  *ml;
+   BOOL esc;
+   C8 const *rs;
 
-   if(regexlt_cfg == NULL)                      // User did not supply a cfg with RegexLT_Init().
-      { return E_RegexRtn_BadCfg; }             // then go no further.
-
-   if( (rtn = RegexLT_Match(searchRegex, inStr, &ml, _RegexLT_Flags_None)) == E_RegexRtn_Match )      // Matched the regex?
+   for(rs = replaceStr, esc = FALSE; *rs != '\0'; rs++)              // Until the end of the replace string...
    {
-      // Then attempt replace.
-      BOOL esc;
-      C8 const *rs;
+      if(*rs == '\\') {                                              // '\". escape?
+         esc = !esc;                                                 // If prev char was NOT backslash, next char will be escaped, and vice versa.
+         if(esc) {                                                   // Escaped now?
+            continue; }}                                             // then continue to next (non-escaped) char.
 
-      for(rs = replaceStr, esc = FALSE; *rs != '\0'; rs++)              // Until the end of the replace string...
-      {
-         if(*rs == '\\') {                                              // '\". escape?
-            esc = !esc;                                                 // If prev char was NOT backslash, next char will be escaped, and vice versa.
-            if(esc) {                                                   // Escaped now?
-               continue; }}                                             // then continue to next (non-escaped) char.
+      if(esc) {                                                      // Current char was escaped?
+         esc = FALSE;                                                // Once we have handled it (the current char), we will be un-escaped.
 
-         if(esc) {                                                      // Current char was escaped?
-            esc = FALSE;                                                // Once we have handled it (the current char), we will be un-escaped.
-
-            if(isdigit(*rs))                                            // '\1' -'\9' etc?
-            {                                                           // is a replace tag so...
-               out = appendMatch(out, ml, toNum(*rs));                  // look for and insert corresponding match from 'ml'. 'out' is advanced past inserted text.
-            }                                                           // If no match then 'out' is unchanged.
-            else                                                        // else not a replace tag, something else
-            {
-               C8 escCh;
-               if( (escCh = escCharToASCII(*rs)) != '0') {              // '\r', '\n' etc?
-                  *out++ = escCh;                                       // If yes, insert the corresponding ASCII.
-               }                                                        // else do nothing.
-            }
-         }
-         else {                                                         // else current char was NOT escaped.
-            if(*rs == '$')                                              // '$'?...
-            {
-               if( isdigit(*(++rs))) {                                  // '$1'.. '$9'?. Is (also) a replace tag. So...
-                  out = appendMatch(out, ml, toNum(*rs));               // look for and insert corresponding match from 'ml'. 'out' is advanced past inserted text.
-               }                                                        // If no match then 'out' is unchanged.
-            }
-            else                                                        // else not '$' (or escaped char)
-            {
-               *out++ = *rs;                                            // so copy literally to 'out'
-            }
+         if(isdigit(*rs))                                            // '\1' -'\9' etc?
+         {                                                           // is a replace tag so...
+            out = appendMatch(out, ml, toNum(*rs));                  // look for and insert corresponding match from 'ml'. 'out' is advanced past inserted text.
+         }                                                           // If no match then 'out' is unchanged.
+         else                                                        // else not a replace tag, something else
+         {
+            C8 escCh;
+            if( (escCh = escCharToASCII(*rs)) != '0') {              // '\r', '\n' etc?
+               *out++ = escCh;                                       // If yes, insert the corresponding ASCII.
+            }                                                        // else do nothing.
          }
       }
-      *out = '\0';                                                      // Exhausted 'replaceStr' so done. Terminate 'out'.
+      else {                                                         // else current char was NOT escaped.
+         if(*rs == '$')                                              // '$'?...
+         {
+            if( isdigit(*(++rs))) {                                  // '$1'.. '$9'?. Is (also) a replace tag. So...
+               out = appendMatch(out, ml, toNum(*rs));               // look for and insert corresponding match from 'ml'. 'out' is advanced past inserted text.
+            }                                                        // If no match then 'out' is unchanged.
+         }
+         else                                                        // else not '$' (or escaped char)
+         {
+            *out++ = *rs;                                            // so copy literally to 'out'
+         }
+      }
    }
-   return rtn;
+   *out = '\0';                                                      // Exhausted 'replaceStr' so done. Terminate 'out'.
+   return E_RegexRtn_OK;
+}
+
+/* ------------------------------------------- RegexLT_Replace -----------------------------------------
+
+   Apply 'regexStr' to 'inStr'. If there are match(es) apply 'replaceStr' to the match(es); result
+   into 'out'.
+
+   Returns E_RegexRtn_Match if there were match(es) and one or more replacements. Otherwise some error
+   code. A 'replaceStr' with no replacements is legal.
+*/
+PUBLIC T_RegexRtn RegexLT_Replace(C8 const *regexStr, C8 const *inStr, C8 const *replaceStr, C8 *out)
+{
+   if(regexlt_cfg == NULL)                                              // User did not supply a cfg with RegexLT_Init().
+      { return E_RegexRtn_BadCfg; }                                     // then go no further.
+   else {
+      T_RegexRtn rtn;   RegexLT_S_MatchList *ml;
+
+      if( (rtn = RegexLT_Match(regexStr, inStr, &ml, _RegexLT_Flags_None)) != E_RegexRtn_Match )      // No match?
+         { return rtn; }                                                // then return 'E_RegexRtn_NoMatch' or some error code.
+      else                                                              // else matched; so now replace.
+      {
+         rtn = replace(ml, replaceStr, out);
+         return rtn == E_RegexRtn_OK ? E_RegexRtn_Match : rtn;          // Replace succeeded? then return 'E_RegexRtn_Match' else some error code.
+      }}
+}
+
+/* ------------------------------------------- RegexLT_ReplaceProg -----------------------------------------
+
+   Same as RegexLT_Replace() but using pre-compiled 'prog'.
+*/
+PUBLIC T_RegexRtn RegexLT_ReplaceProg(void *prog, C8 const *inStr, C8 const *replaceStr, C8 *out)
+{
+   if(regexlt_cfg == NULL)                                              // User did not supply a cfg with RegexLT_Init().
+      { return E_RegexRtn_BadCfg; }                                     // then go no further.
+   else {
+      T_RegexRtn rtn;   RegexLT_S_MatchList *ml;
+
+      if( (rtn = RegexLT_MatchProg(prog, inStr, &ml, _RegexLT_Flags_None)) != E_RegexRtn_Match )      // No match?
+         { return rtn; }                                                // then return 'E_RegexRtn_NoMatch' or some error code.
+      else                                                              // else matched; so now replace.
+      {
+         rtn = replace(ml, replaceStr, out);
+         return rtn == E_RegexRtn_OK ? E_RegexRtn_Match : rtn;          // Replace succeeded? then return 'E_RegexRtn_Match' else some error code.
+      }}
 }
 
 /* ------------------------------------------ RegexLT_FreeMatches ------------------------------- */
@@ -488,7 +438,7 @@ PUBLIC T_RegexRtn RegexLT_Replace(C8 const *searchRegex, C8 const *inStr, C8 con
 PUBLIC void RegexLT_FreeMatches(RegexLT_S_MatchList const *ml)
 {
    safeFree(ml->matches);     // First free matches.
-   safeFree((void*)ml);              // then the enclosing match-list;
+   safeFree((void*)ml);       // then the enclosing match-list;
 }
 
 
