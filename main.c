@@ -74,7 +74,7 @@ typedef struct {
 } S_Test;
 
 
-#if 1
+#if 0
 PRIVATE RegexLT_S_Cfg cfg = {
    .getMem        = getMemCleared,
    .free          = myFree,
@@ -142,6 +142,8 @@ PRIVATE S_Test const tests[] = {
 
    // Explosive quantifier
    { "^(a+)*b",      "aaab",                 E_RegexRtn_Match,    {2, {{0,4},{0,3}}}},
+
+   { "fob_([\\d]{6})_([\\d]{1,3})\\.log", "fob_123456_123.log",    E_RegexRtn_Match,  {3, {{0,18}, {4,6}, {11,3}}}             },       // The empty string is no-match
 };
 
 #else
@@ -158,7 +160,9 @@ PRIVATE RegexLT_S_Cfg cfg = {
 PRIVATE S_Test const tests[] = {
 //   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
 //   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
-   { "\\D(\\d{5}(-\\d{4})?)",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
+//   { "\\D(\\d{5}(-\\d{4})?)",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
+   { "fob_[\\d]{6}_([\\d]{1,3})\\.log",          "fob_123456_789.log",                     E_RegexRtn_Match,  {2, {{0,18}, {11,3}}}             },       // The empty string is no-match
+//   { "fob_([\\d]{6})_([\\d]{1,3})\\.log", "fob_123456_789.log",    E_RegexRtn_Match,  {3, {{0,18}, {4,6}, {11,3}}}             },       // The empty string is no-match
 };
 
 #endif

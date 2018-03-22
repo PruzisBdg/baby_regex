@@ -238,14 +238,29 @@ PRIVATE void addMatchSub(S_Thread *t, C8 const *inStr, C8 const *start, C8 const
       }
       else                                            // otherwise don't compare global matches. Instead...
       {
-         if(t->matches.put < t->matches.bufSize) {    // Enuf room to add another rmatch?
+         BOOL dup = FALSE;
+         if(t->matches.put > 1)
+         {
+            if(t->matches.ms[t->matches.put-1].start == startIdx && len > t->matches.ms[t->matches.put-1].len )
+            {
+               dup = TRUE;
+            }
+         }
+
+         if( dup == FALSE && t->matches.put < t->matches.bufSize) {    // Enuf room to add another rmatch?
 
             S_Match *m = &t->matches.ms[t->matches.put];
             m->start = startIdx; m->len = len;        // then add new match.
                               dbgPrint("AddM [%d %d] @ %d\r\n", m->start, m->len, t->matches.put);
             t->matches.put++; }                       // and we have one more (match)
-         else
-            { printf("\r\n -------------- No room for match [%d,%d]\r\n", start-inStr, end-start); }
+         else {
+            if(dup == TRUE) {
+               t->matches.ms[t->matches.put-1].len = len;
+               dbgPrint("\r\n -------------- Duplicate match [%d,%d] @ %d\r\n", start-inStr, end-start, t->matches.put);
+            }
+            else
+               { dbgPrint("\r\n -------------- No room for match [%d,%d] capacity = %d\r\n", start-inStr, end-start, t->matches.bufSize);  }
+         }
       }
    }
    else
@@ -542,7 +557,7 @@ PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
          {                                               // Just add the submatch, if there's room.
             if(to->put < to->bufSize) {                  // Room in to[] yet?
                to->ms[to->put] = from->ms[c];            // then append from[c]
-               to->put++; }                              // and to[] has an (additional) submatch.
+               to->put++; dbgPrint("-##############################plus plus\r\n"); }                              // and to[] has an (additional) submatch.
          }
       }
    } // for each match in from[]

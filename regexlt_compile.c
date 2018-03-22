@@ -186,6 +186,25 @@ PRIVATE BOOL isaRepeat(C8 const *rgx)
          : (ch == '?' || ch == '*' || ch == '+');  // Not a range; is it a single char?
 }
 
+PRIVATE C8 const * toClosesClass(C8 const *p)
+   { for(; *p != ']' && *p != '\0'; p++) {} return p-1; }
+
+PRIVATE C8 const * toClosesRpt(C8 const *p)
+   { for(; *p != '}' && *p != '\0'; p++) {} return p; }
+
+/* ------------------------------------------- gotCharsAtLeast --------------------------------- */
+
+PRIVATE BOOL gotCharsAtLeast(S_CharsBox const *cb)
+{
+   return
+      cb->put > 0 ||                               // Already completed a chars-segment? OR
+      (
+         cb->segs[0].opcode == OpCode_Chars &&     // If 1st segment is a chars-list? AND
+         cb->segs[0].payload.chars.len > 0         // we already have at least 1 char in that list? (we should, otherwise it would be OpCode_Null)
+      );
+}
+
+
 /* ----------------------------- fillCharBox ---------------------------------
 
    Given an (empty) 'character box' and a location in the regex string, read at
@@ -210,10 +229,10 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
    S_ParseCharClass parseClass;
    T_ParseRtn rtn;
 
-   S_Chars * sg = cb->segs;
+   S_Chars * sgs = cb->segs;
    cb->put = 0;                           // Fill 'cb' starting at cb->buf[0].
-   sg[cb->put].opcode = OpCode_Null;      // Until we fill it this 1st segment has no opcode, and...
-   sg[cb->put].payload.chars.len = 0;     // and, for a chars-segment, no chars either.
+   sgs[cb->put].opcode = OpCode_Null;      // Until we fill it this 1st segment has no opcode, and...
+   sgs[cb->put].payload.chars.len = 0;     // and, for a chars-segment, no chars either.
 
    /* If got a '(' rightaway. then this chars-list either opens a subgroup or will be an
       an entire subgroup.
@@ -236,7 +255,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
       {
          ch = translateEscapedWhiteSpace(regexStr);   // Convert any '\r','\n' etc to ASCII values
 
-         switch(sg[cb->put].opcode)
+         switch(sgs[cb->put].opcode)
          {
             case OpCode_Null:                         // --- No current context. See wot we got.
             case OpCode_Chars:                        // ---- Running through a character segment e.g '...fghij...'
@@ -262,7 +281,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                   case '(':
                      if( !bumpIfEmpty(cb) )                             // If necessary, advance to an open 'Null' char-box.
                         { return FALSE; }                               // Return fail if didn't count and malloc() enuf S_Chars in prescan.
-                     sg[cb->put].opcode = OpCode_Match;                 // Write a '_Match' terminator to this empty box.
+                     sgs[cb->put].opcode = OpCode_Match;                // Write a '_Match' terminator to this empty box.
                      cb->len = cb->put+1;
                      return TRUE;
 
@@ -271,38 +290,51 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                      return FALSE;
 
                   case '[':      // Opens a char class.
-                     if( !bumpIfEmpty(cb) )                          // If necessary, advance to an open 'Null' char-box.
-                        { return FALSE; }                            // Return fail if didn't count and malloc() enuf S_Chars in prescan.
-                     sg[cb->put].opcode = OpCode_Class;              // ...(which will) hold a character class.
-
-                     if( (sg[cb->put].payload.charClass = CharClass_New(cl)) == NULL  )    // Made a fresh  empty char class into char-box payload?
-                        { return FALSE; }                            // Nope! malloc() failed.
+                     // First, if this char-class is preceded by a chars-segment AND followed by a repeat-specifier,
+                     // then we must close out the current Chars-Box and start a new one for the (repeated)
+                     // char-class. This because the repeat binds only the preceding class.
+                     if( gotCharsAtLeast(cb) &&                      // Already got a partial chars-segment or whole segment(s), any type?
+                         isaRepeat( toClosesClass(*regexStr))+1 )    // ...repeat operator e.g follows this e.g [0-8]{1,4}.
+                     {
+                        if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
+                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_Chars in prescan.
+                        sgs[cb->put].opcode = OpCode_Match;          // ...and terminate the CBox.
+                        cb->len = cb->put+1;
+                        return TRUE;                                 // return the new Chars-Box WITHOUT advancing '*regexStr'...
+                     }
                      else
-                        { classParser_Init(&parseClass); }           // else got a new class. Also need a parser to load it.
-                     break;
+                     {
+                        if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
+                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_Chars in prescan.
+                        sgs[cb->put].opcode = OpCode_Class;          // ...(which will) hold a character class.
+
+                        if( (sgs[cb->put].payload.charClass = CharClass_New(cl)) == NULL  )    // Made a fresh  empty char class into char-box payload?
+                           { return FALSE; }                         // Nope! malloc() failed.
+                        else
+                           { classParser_Init(&parseClass); }        // else got a new class. Also need a parser to load it.
+                        break;
+                     }
 
                   case '^':
                   case '$':
                      if( !bumpIfEmpty(cb) )                          // If necessary, advance to an open 'Null' char-box.
                         { return FALSE; }                            // Return fail if didn't count and malloc() enuf S_Chars in prescan.
-                     sg[cb->put].opcode = OpCode_Anchor;             // ...(which will) hold an anchor.
-                     sg[cb->put].payload.anchor.ch = ch;             // This is the anchor char;
+                     sgs[cb->put].opcode = OpCode_Anchor;            // ...(which will) hold an anchor.
+                     sgs[cb->put].payload.anchor.ch = ch;            // This is the anchor char;
                      if( !wrNextSeg(cb, OpCode_Null))                // Advance and clean out next char-segment.
                         {return FALSE; }
                      break;
 
                   case '\\':     // e.g '\d','\w', anything which wasn't captured by translateEscapedWhiteSpace() (above).
-                     if(( cb->put > 0 ||                             // Already completed a chars-segment? OR
-                           (
-                              sg[0].opcode == OpCode_Chars &&        // If 1st segment is a chars-list? AND
-                              sg[0].payload.chars.len > 0            // we already have at least 1 char in that list? (we should, otherwise it would be OpCode_Null)
-                           )
-                        ) &&                                         // AND...
-                        isaRepeat( (*regexStr)+2 ))                  // ...repeat operator e.g '+' or '{3}' follows this e.g '\d'.
+                     // First, if this escaped char-class is preceded by a chars-segment AND followed by a repeat-specifier,
+                     // then we must close out the current Chars-Box and start a new one for the (repeated)
+                     // char-class. This because the repeat binds only the preceding class.
+                     if( gotCharsAtLeast(cb) &&                      // Already got a partial chars-segment or whole segment(s), any type?
+                         isaRepeat( (*regexStr)+2 ))                 // ...repeat operator follows this e.g '\d+'.
                      {                                               // then repeat operator applies just to the escaped \\. Finish the Chars-Box we have so far....
                         if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
                            { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_Chars in prescan.
-                        sg[cb->put].opcode = OpCode_Match;           // ...and terminate the CBox.
+                        sgs[cb->put].opcode = OpCode_Match;          // ...and terminate the CBox.
                         cb->len = cb->put+1;
                         return TRUE;                                 // return the new Chars-Box WITHOUT advancing '*regexStr'...
                      }                                               // ...the escape, e.g '\d' will go into its own Box, following a '_Split' which holds it's repeat count..
@@ -320,14 +352,14 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                         if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
                            { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_Chars in prescan.
 
-                        sg[cb->put].opcode = OpCode_EscCh;           // and make an EscCh instruction
-                        sg[cb->put].payload.esc.ch = ch;             // Put ASCII code in 'OpCode_EscCh'.
+                        sgs[cb->put].opcode = OpCode_EscCh;          // and make an EscCh instruction
+                        sgs[cb->put].payload.esc.ch = ch;            // Put ASCII code in 'OpCode_EscCh'.
                         if( !wrNextSeg(cb, OpCode_Null))
                            {return FALSE; }
                      }
                      else                                            // else printable
                      {
-                        if(sg[cb->put].opcode == OpCode_Chars)       // We are already building a chars segment?
+                        if(sgs[cb->put].opcode == OpCode_Chars)      // We are already building a chars segment?
                         {
                            /* Before adding this latest char to the existing segment, check the next char(s).
                               If these specify a repeat i.e '?','*','+'or '{n,n}', then this current char
@@ -345,21 +377,21 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                            }
                            else                                      // else next char is not a repeat-operator.
                            {
-                              sg[cb->put].payload.chars.len++;       // So add current char to segment; by incrementing segment length.
+                              sgs[cb->put].payload.chars.len++;      // So add current char to segment; by incrementing segment length.
                            }
                         }
                         else                                         // else this opcode is Null, meaning empty.
                         {
-                           sg[cb->put].opcode = OpCode_Chars;            // so start a new chars segment in it.
-                           sg[cb->put].payload.chars.start = *regexStr;  // Segment starts here.
-                           sg[cb->put].payload.chars.len = 1;            // Just 1 the current char so far.
+                           sgs[cb->put].opcode = OpCode_Chars;            // so start a new chars segment in it.
+                           sgs[cb->put].payload.chars.start = *regexStr;  // Segment starts here.
+                           sgs[cb->put].payload.chars.len = 1;            // Just 1 the current char so far.
                         }
                      }
                }
                break;
 
             case OpCode_Class:                        // --- Parsing a character class definition e.g '[0-9A-.....'
-               if( (rtn = classParser_AddCh(&parseClass, sg[cb->put].payload.charClass, &ch)) == E_Fail)
+               if( (rtn = classParser_AddCh(&parseClass, sgs[cb->put].payload.charClass, &ch)) == E_Fail)
                {
                   printf("unterminated char class\r\n");
                   return FALSE;
@@ -666,8 +698,10 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                else                                      // else got a repeat specifier.
                {
                   addSplit_wRepeats(prog, +1, +3, &rpt); // Write instructions as for 'zero-or-more', but with repeat specifiers non-zero.
-                  attachCharBox(prog,                    // This is 'next'.
-                     lookaheadFor_GroupClose(&cb, rgxP));
+
+                  if(*rgxP == ')')
+                     {cb.closesGroup = TRUE;}
+                  attachCharBox(prog, &cb );
                   addJump(prog, -2);                     // then back to retry or move on.
                   break;
                }
