@@ -51,14 +51,18 @@ typedef enum { E_Continue = 0, E_Complete = 1, E_Fail } T_ParseRtn;
 
 typedef struct {
    C8    prevCh;
-   BOOL  range;      // Previous ch was a '-', meaning we are parsing
-   BOOL  negate;     // Previous ch was '^', meaning following char is a negation.
-   BOOL  esc;        // an escape '\', to be followed by a class specifier.
+   BOOL  range,            // Previous ch was a '-', meaning we are parsing
+         negate,           // Previous ch was '^', meaning following char is a negation.
+         esc;              // an escape '\', to be followed by a class specifier.
+   struct {
+      U8 hi;
+      U8 step;
+   } hex;
 } S_ParseCharClass;
 
 PUBLIC void       regexlt_classParser_Init(S_ParseCharClass *p);
 PUBLIC BOOL       regexlt_classParser_AddDef(S_ParseCharClass *p, S_C8bag *cc, C8 const *def);
-PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8 newCh);
+PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8 const *src);
 PUBLIC C8 const * regexlt_getCharClassByKey(C8 key);
 
 typedef U8 T_RepeatCnt;    // Regex repeat counts e.g [Ha ]{3} = 'Ha Ha Ha '
@@ -152,8 +156,9 @@ typedef struct {                    // List of character-segments and char-class
 
 typedef struct {                    // List of instructions...
    S_Instr     *buf;                // ...which are here.
-   T_InstrIdx  size,                // Size of S_Chars malloced() based on pre-scan.
+   T_InstrIdx  size,                // Size of S_Instr malloced() based on pre-scan.
                put;                 // 'put' to add another one / number of S_Instr in 'buf'.
+   U16         maxRunCnt;           // Max iterations of the threads-list. Usually a bit longer than the input string.
 } S_InstrList;
 
 // A compiled regex is...
@@ -161,6 +166,7 @@ typedef struct {
    S_InstrList    instrs;           // Instructions to execute, terminated by 'Match'
    S_CharsList    chars;            // One or more lists of chars and char classes, each attached to a 'Char' instruction, terminated by 'Match'.
    S_ClassesList  classes;          // Zero or more character classes, each a part or all of a S_CharsList
+   U16            subExprs;         // 1 + number of possible sub-matches, Used to size the match-list.
 } S_Program;
 
 PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr);
@@ -175,10 +181,6 @@ PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
 PUBLIC T_RegexRtn regexlt_runCompiledRegex(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList **ml, U8 maxMatches, RegexLT_T_Flags flags);
 
 extern RegexLT_S_Cfg const *regexlt_cfg;
-
-PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
-PUBLIC void regexlt_safeFreeList(void **lst, U8 listSize);
-PUBLIC BOOL regexlt_getMemMultiple(S_TryMalloc *lst, U8 listSize);
 
 PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxChars);
 

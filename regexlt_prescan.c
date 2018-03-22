@@ -30,7 +30,7 @@ PRIVATE BOOL isAnOperator(C8 ch)
 PRIVATE BOOL isRangeContents(C8 ch)
    { return isdigit(ch) || ch == ',' || ch == ' '; }      // e.g {3,4}, {3, 12} etc
 
-PRIVATE C8 const classSpecifiers[] = "dws";
+PRIVATE C8 const classSpecifiers[] = "dwsDWS";
 
 PRIVATE BOOL isClassSpecifier(C8 ch)
    { return  strchr(classSpecifiers, ch) != NULL; }

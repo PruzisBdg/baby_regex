@@ -152,13 +152,13 @@ PRIVATE RegexLT_S_Cfg cfg = {
    .printEnable   = TRUE,
    .maxSubmatches = 9,
    .maxRegexLen   = MAX_U8,
-   .maxStrLen     = MAX_U8
+   .maxStrLen     = 500
 };
 
 PRIVATE S_Test const tests[] = {
-   { "^(a+)*b",          "aaab",                     E_RegexRtn_Match,  {2, {{0,4},{0,3}}}              },       // The empty string is no-match
-//   { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
-//   { "dog|cat",      "pussycats",            E_RegexRtn_Match,    {1, {{5,3}}}         },
+//   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
+//   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
+   { "\\D(\\d{5}(-\\d{4})?)",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
 };
 
 #endif
@@ -191,12 +191,12 @@ PRIVATE S_TestRightOperator const rightOpTests[] = {
    { "a\\+",    '$' },
    { "a\\?",    '$' },
    { "a\\*",    '$' },
-   { "a\\{",    '$' },               if( !foundEarlierDuplicate(curr, ti))
+   { "a\\{",    '$' },
 
 
    // Post operator captures previous char.
    { "ab+",     'E' },
-   { "ab?",     'E' },                  thrd->matches.ms[0].len = cBoxStart - str - thrd->matches.ms[0].start;
+   { "ab?",     'E' },
 
    { "ab*",     'E' },
    { "ab{2}",   'E' },
@@ -252,9 +252,11 @@ PRIVATE S_TestRightOperator const rightOpTests[] = {
 };
 
 PRIVATE S_TestRightOperator const ropTstB[] = {
-   { "(\\d)",    '$' },
+   { "abc",    '$' },
+   { "ab+",     'E' },
 };
 
+//#define _ropTsts ropTstB
 #define _ropTsts rightOpTests
 
 PRIVATE void testRightOp(S_TestRightOperator const *tbl, U16 tblSize)

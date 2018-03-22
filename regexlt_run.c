@@ -268,8 +268,8 @@ PRIVATE S_ThreadList * threadList(T_ThrdListIdx len)
    S_ThreadList *lst;
 
    S_TryMalloc toMalloc[] = {
-      { (void**)&thrd, (size_t)len * sizeof(S_Thread)    },
-      { (void**)&lst, (size_t)len * sizeof(S_ThreadList) }};
+      { (void**)&thrd, (size_t)len * sizeof(S_Thread)    },       // All these threads...
+      { (void**)&lst, 1            * sizeof(S_ThreadList) }};     // ...held in 1 list.
 
    if( getMemMultiple(toMalloc, RECORDS_IN(toMalloc)) == FALSE)
       { return NULL; }        // ... but if a malloc() failed return NULL.
@@ -522,7 +522,6 @@ PRIVATE BOOL matchesSame(S_Match const *a, S_Match const *b)
 */
 PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
 {
-   BOOL dup;
    for(U8 c = 0; c < from->put; c++)                     // For each match in 'from'...
    {
       BOOL dup = FALSE;
@@ -708,12 +707,11 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      if( *(cBoxStart+1) != '\0')                                 // Advance... there's at least one more char in the input string?
                      {
                         addR = TRUE;                                             // then add a new thread to 'next' applying existing CharBox start at this new char.
-                        dfltMatchCfg.clone = TRUE;
+                        dfltMatchCfg.clone = TRUE;                               // Spawning a new thread so clone match list of the existing thread (instead of referencing it).
                         addThread(next,
                            newThread(pc, cBoxStart+1, loopCnt, gs, &dfltMatchCfg,
-                              !matchedMinimal && prog->buf[pc+1].opcode == OpCode_CharBox
-                                 ? _EatMismatches
-                                 : _StopAtMismatch) );
+                              matchedMinimal ?                                   // Already got a (minimal) match?
+                                 _StopAtMismatch : _EatMismatches ) );           // then end this thread upon hitting a mismatch -
                      }
                   }
                   else                                                           // else failed to match this 1st Chars_Box?
@@ -804,6 +802,12 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
             case OpCode_Match:
                rtn = E_RegexRtn_Match;
 
+               /* Mark that we got at least a minimal match. After this any (live) thread will terminate
+                  on a mismatch. This must be so otherwise at least one thread will (needlessly) eat mismatches
+                  until the end of input - and then report 'E_RegexRtn_NoMatch' (above).
+               */
+               matchedMinimal = TRUE;
+
                /* If caller supplied a hook for a match list then we will have malloced for a match list.
                   Fill the list with the matches which this thread found. If we are looking for a
                   maximal match on the entire input string then this match may not be the first.
@@ -866,7 +870,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      then we have matched every regex element at least once, and so have at least a minimal match.
                      Once there is a minimal match, if any other search paths are 'eating' leading mismatches
                      they must stop doing so. Otherwise these searches will continue past this 1st match and find
-                     any subsequent ones. Meaning, e.g ...
+                      any subsequent ones. Meaning, e.g ...
 
                         34+' will bypass the 1st '344' in '1234411134444' and continue to the 2nd, '34444'.
 
@@ -938,7 +942,13 @@ EndsCurrentStep:
       swapPtr(&curr, &next);
       clearThreadList(next);
 
-   } while(curr->put > 0 && ++execCycles < 25);
+      // Break if too many cycles of the thread list. Something badly wrong; as this is based of the
+      // length of the input string.
+      if(++execCycles > prog->maxRunCnt) {
+         rtn = E_RegexRtn_RanTooLong;
+         goto CleanupAndRtn; }
+
+   } while(curr->put > 0);
 
 
 CleanupAndRtn:
