@@ -522,7 +522,6 @@ PRIVATE BOOL matchesSame(S_Match const *a, S_Match const *b)
 */
 PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
 {
-   BOOL dup;
    for(U8 c = 0; c < from->put; c++)                     // For each match in 'from'...
    {
       BOOL dup = FALSE;

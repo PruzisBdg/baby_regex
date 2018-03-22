@@ -41,12 +41,14 @@ PRIVATE BOOL isPostOpCh(C8 ch)
 
 //#define TRACE_RIGHT_OP
 
+   #if 0
 PRIVATE C8 const * toClosesRptA(C8 const *p)
    { for(; *p != '}' && *p != '\0'; p++) {} return p; }
 
 
 PRIVATE C8 const * bumper(C8 const *p)
    { return *(p+1) == '{' ?  toClosesRptA(p+1) : p+1; }
+   #endif
 
 PRIVATE C8 const * toClosesRpt(C8 const *p)
    { for(; *p != '}' && *p != '\0'; p++) {} return p-1; }
@@ -106,17 +108,14 @@ PUBLIC C8 rightOperator(C8 const *rgx)
                         grpCnt++;}                    // then exiting to top adds another char-group
                   }
                   else if(ch == '(') {                // Opening?
-                     inSub++;                         // then we go deeper
-                  }
+                     inSub++; }                       // then we go deeper
                }
                else {                                 // else didn't enter subgroup(s)
                   if(ch == ')') {                     // But, got a ')'? so must have started inside one.
-                     if(inSub > 0) {                  
-                        inSub--;}                     // Hmmm... think this is redundant 'inSub' is already 0 (above)
-                  }
-                  else if(ch == '(') {                // Opening '('
+                  }                                   // No action; 'inSub' is already 0 (above)
+                  else if(ch == '(') {                // Opening '('?
                      inSub = 1;                       // we are instead down in a subgroup
-                     inCh = FALSE;
+                     inCh = FALSE;                    // and we are NOT any more at top-level chars.
                   }
                   else if(ch == '|') {                // Alternation, '|'?
                      return '|';                      // Is right associative, so binds to rgx[0], no matter what's in between

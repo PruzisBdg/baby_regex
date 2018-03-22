@@ -194,59 +194,58 @@ PUBLIC T_RegexRtn RegexLT_Compile(C8 const *regexStr, void **progV)
    S_RegexStats stats = regexlt_prescan(regexStr);          // Prescan regex; check for gross errors and count resources needed to compile it.
 
    if(stats.legal == FALSE)                                 // Regex was malformed?
-   {
-      return E_RegexRtn_BadExpr;
-   }
+      { return E_RegexRtn_BadExpr; }
    else                                                     // else 'regex' is free of gross errors.
    {
       if(regexlt_cfg->getMem == NULL)                       // Did not supply user getMem() (via RegexLT_Init() )
-      {
-         return E_RegexRtn_BadCfg;
-      }
+         { return E_RegexRtn_BadCfg; }
       else                                                  // else (try to) malloc() what we need and match against 'regex'
       {
          T_RegexRtn rtn;
 
-         // Memory for the Program we will compile to.
-         S_TryMalloc toMalloc[] = {
-            { progV,                           sizeof(S_Program) },     // The Program itself, and, attached to it...
-            { (void**)&((S_Program*)(*progV))->chars.buf,    (U16)stats.charboxes    * sizeof(S_Chars) },    // Chars-Boxes
-            { (void**)&((S_Program*)(*progV))->instrs.buf,   (U16)stats.instructions * sizeof(S_Instr) },    // Instructions (list)
-            { (void**)&((S_Program*)(*progV))->classes.ccs,  (U16)stats.classes      * sizeof(S_C8bag) }};   // any Char-classes
+         S_TryMalloc programTrunk[] = {{ progV,  sizeof(S_Program) }};
 
-         if( getMemMultiple(toMalloc, RECORDS_IN(toMalloc)) == FALSE)   // Oops!?
+         if( getMemMultiple(programTrunk, RECORDS_IN(programTrunk)) == FALSE)   // Malloc program trunk?
+            { return E_RegexRtn_OutOfMemory; }              // Some malloc() error.
+         else
          {
-            rtn = E_RegexRtn_OutOfMemory;                   // Some malloc() error.
-         }
-         else                                               // otherwise malloc() success.
-         {
+            // Attach leaves to trunk
             S_Program *prog = *progV;
 
-            /* Fill in the sizes of the as-yet empty stores we malloced for 'prog'. These are
-               hard fill-limits for the compiler.
-            */
-            prog->classes.size = stats.classes;
-            prog->chars.size = stats.charboxes;
-            prog->instrs.size = stats.instructions;
-            prog->subExprs = stats.subExprs;
+            S_TryMalloc programLeaves[] = {
+               { (void**)&prog->chars.buf,    (U16)stats.charboxes    * sizeof(S_Chars) },    // Chars-Boxes
+               { (void**)&prog->instrs.buf,   (U16)stats.instructions * sizeof(S_Instr) },    // Instructions (list)
+               { (void**)&prog->classes.ccs,  (U16)stats.classes      * sizeof(S_C8bag) }};   // any Char-classes
 
-            rtn = compileRegex(prog, regexStr) == TRUE      // Compile 'regexStr' into 'prog'
-               ? E_RegexRtn_OK
-               : E_RegexRtn_CompileFailed;
+            if( getMemMultiple(programLeaves, RECORDS_IN(programLeaves)) == FALSE)   // Malloc program leaves?
+               { return E_RegexRtn_OutOfMemory; }           // Some malloc() error.
+            else                                            // otherwise have malloc()ed for program we will now compile.
+            {
+               /* Fill in the sizes of the as-yet empty 'leaves' we malloced for 'prog'. If we pre-scanned correctly
+                  the leaves should be enoigh for the compiled program. But in case not, these are hard fill-limits
+                  for the compiler.
+               */
+               prog->classes.size = stats.classes;
+               prog->chars.size   = stats.charboxes;
+               prog->instrs.size  = stats.instructions;
+               prog->subExprs     = stats.subExprs;
 
-            printProgram(prog);
+               // **** Compile 'regexStr' into 'prog' ****
+               rtn = compileRegex(prog, regexStr) == TRUE   // Right now compile() just returns success or failure.
+                  ? E_RegexRtn_OK
+                  : E_RegexRtn_CompileFailed;
 
-            if(rtn != E_RegexRtn_OK)                        // Compile failed?
-            {                                               // then free() 'prog' now; otherwise it's returned to caller.
-               void *toFree[] = { prog->classes.ccs, prog->instrs.buf, prog->chars.buf };
-               safeFreeList(toFree, RECORDS_IN(toFree));
-               *progV = NULL;
-            }
-         }
-         return rtn;
-      }
-   }
-}
+               printProgram(prog);
+
+               if(rtn != E_RegexRtn_OK)                     // Compile failed?
+               {                                            // then free() 'prog' now; otherwise it's returned to caller.
+                  void *toFree[] = { prog->classes.ccs, prog->instrs.buf, prog->chars.buf };
+                  safeFreeList(toFree, RECORDS_IN(toFree));
+                  *progV = NULL;
+               }
+               return rtn;
+            }}}}
+} // RegexLT_Compile()
 
 
 #if 0

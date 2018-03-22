@@ -572,7 +572,6 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
    prog->chars.put = 0;
    prog->classes.put = 0;
    C8 firstOp = 0;
-   C8 ch1 = 0;
 
    /* A new zero-length Chars-Box. Attach to the malloced 'prog.chars.buf'. Copy in 'bufSize'; used
       to check we don't overrun the malloc(), in case the pre-scan under-counted the number of
