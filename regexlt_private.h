@@ -75,6 +75,7 @@ PUBLIC T_ParseRtn regexlt_parseRepeat(S_RepeatSpec *r, C8 const **ch);
 
 
 typedef U8 T_InstrIdx;     // To index an instruction in a array of S_Instr; a program counter.
+#define _Max_T_InstrIdx  MAX_U8
 
 // A list/heap of character classes
 typedef struct {
