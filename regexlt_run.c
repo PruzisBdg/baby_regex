@@ -203,6 +203,7 @@ typedef struct {
     C8 const   *sp;              // Source (input string) pointer.
     T_RepeatCnt rptCnt;          // A run-count for the character set in this thread. For repeats e.g (Ha){3}
     C8 const   *subgroupStart;   // If a subgroup was opened in this thread, then this is the 1st char of the subgroup.
+    T_InstrIdx  lastOpensSub;    // Instruction (PC) which opened the most recent sub-group / sub-expression.
     S_MatchList matches;         // Matches which this thread has found - so far.
     BOOL        eatMismatches;   // Eat (leading) mismatches), at the start of the regex
                                  // Flag is defeated at the 1st match in a thread. Avoids thread blowup with 'A+..' which is implicitly '.*A+...' and just explodes.
@@ -223,52 +224,58 @@ typedef struct {
 
 PRIVATE void addMatchSub(S_Thread *t, C8 const *inStr, C8 const *start, C8 const *end, BOOL eatLeads, BOOL replaceShorter)
 {
-   if(start >= inStr && end >= start) {               // Match pointers make a legal interval?
-                                                      // then the interval is this.
+   if(start < inStr || end < start)                                     // 'start' before start of source string? OR 'end' before 'start'?
+      { printf("\r\n -------------- Illegal match parms (%d,%d)\r\n", start-inStr, end-start); }   // then illegal match interval.
+   else                                                                 // else match interval is fine. Continue...
+   {
+      // then the interval is this.
       RegexLT_T_MatchIdx startIdx = ClipU32toU16(start - inStr);
       RegexLT_T_MatchIdx len = ClipU32toU16(end - start + 1);
 
-      if(eatLeads && t->matches.put > 0)              // Eating leading mismatches? AND the list has at least 1 match?
+      if(eatLeads && t->matches.put > 0)                                // Eating leading mismatches? AND the list has at least 1 match?
       {
-         S_Match *m = &t->matches.ms[0];              // 1st match is the global.
-         if(startIdx < m->start) {                    // This new match starts earlier than the global on the list?
-            m->start = startIdx; m->len = len;        // then the new match replaces the existing one.
+         S_Match *m = &t->matches.ms[0];                                // 1st match is the global.
+         if(startIdx < m->start) {                                      // This new match starts earlier than the global on the list?
+            m->start = startIdx; m->len = len;                          // then the new match replaces the existing one.
                              dbgPrint("Add lead  m[0]<-[%d %d] @ %d\r\n", m->start, m->len, t->matches.latestPC); }
          t->matches.latestPC = t->pc;
          if(t->matches.put == 0)
             { t->matches.put = 1; }
       }
-      else                                            // otherwise don't compare global matches. Instead...
+      else                                                              // otherwise don't compare global match. Add 1st global or a sub-match.
       {
+         /* If there's already a sub-match and the new match AND this new match is to the same sub-expression as the
+            most recent existing match AND it starts at the same point as the previous sub-match but is longer (it should be)
+            then lengthen the existing sub-match.
+
+            Otherwise it's a minimal new sub-match and we append it to the match-list.
+         */
          BOOL dup = FALSE;
-         if(t->matches.put > 1 && t->pc == t->matches.latestPC)
-         {
-            if(t->matches.ms[t->matches.put-1].start == startIdx && len > t->matches.ms[t->matches.put-1].len )
-            {
-               dup = TRUE;
-            }
-         }
 
-         if( dup == FALSE && t->matches.put < t->matches.bufSize) {    // Enuf room to add another match?
+         if(t->matches.put > 1 &&                                       // There's a sub-match? AND
+            t->pc == t->matches.latestPC) {                             // it's on the same regex sub-expression as the most recent?
+            if(t->matches.ms[t->matches.put-1].start == startIdx &&     // New match starts at same place in source string? AND
+               len > t->matches.ms[t->matches.put-1].len ) {            // it's longer?
+               dup = TRUE; }}                                           // then we have an extension of the most recent sub-match.
 
-            S_Match *m = &t->matches.ms[t->matches.put];
-            m->start = startIdx; m->len = len;        // then add new match.
+         if( dup == FALSE && t->matches.put < t->matches.bufSize) {     // NOT an extension? must add... Enuf room to add another match?
+
+            S_Match *m = &t->matches.ms[t->matches.put];                // then add new match.
+            m->start = startIdx; m->len = len;
             t->matches.latestPC = t->pc;
                               dbgPrint("AddM m[%d]<-(%d %d) @ %d\r\n", t->matches.put, m->start, m->len, t->matches.latestPC);
-            t->matches.put++; }                       // and we have one more (match)
-         else {
-            if(dup == TRUE) {
+            t->matches.put++; }                                         // and we have one more (match)
+         else {                                                         // else not adding a new match
+            if(dup == TRUE) {                                           // Extending existing match?
+               t->matches.ms[t->matches.put-1].len = len;               // Just replace existing length with new.
                               dbgPrint("\r\n DupM m[%d] (%d,%d)->(%d,%d) @%d \r\n",
                                   t->matches.put-1, startIdx,  t->matches.ms[t->matches.put-1].len, startIdx, len, t->matches.latestPC );
-               t->matches.ms[t->matches.put-1].len = len;
             }
             else
                { dbgPrint("\r\n -------------- No room for match (%d,%d) capacity = %d\r\n", start-inStr, end-start, t->matches.bufSize);  }
          }
       }
    }
-   else
-      { printf("\r\n -------------- Illegal match parms (%d,%d)\r\n", start-inStr, end-start); }
 }
 
 PRIVATE void addMatch(S_Thread *t, C8 const *inStr, C8 const *start, C8 const *end)
@@ -340,7 +347,7 @@ typedef struct {
    'src' is the current read of the input string. 'groupStart' and 'rpts' are copied from the
    thread which spawned this one.
 */
-PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 const *groupStart, S_ThrdMatchCfg const *mcf, BOOL eatMismatches)
+PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 const *groupStart, T_InstrIdx subStartIdx, S_ThrdMatchCfg const *mcf, BOOL eatMismatches)
 {
    static S_Thread t;
 
@@ -348,6 +355,7 @@ PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 c
    t.sp = src;                         // input string read at...
    t.rptCnt = rpts;                    // Repeats of this thread so far.
    t.subgroupStart = groupStart;       // If this thread starts a sub-group.
+   t.lastOpensSub = subStartIdx;
    t.eatMismatches = eatMismatches;    // if this thread eats leading mismatches.
 
    if(mcf->lst == NULL)                                                                // No existing matches to clone or reference?
@@ -624,6 +632,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   str,                 // From start of the input string
                   0,                   // Loop/repeat count starts at 0. WIll increment if JMP back to reuse previous Chars-Box.
                   NULL,                // No group start
+                  0,                   // Park program counter for sub-group at instruction zero.
                   &matchesCfg0,        // Accumulate any matches here.
                   _EatMismatches));    // Eat leading mismatches unless told otherwise.
 
@@ -705,7 +714,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         char in the input string after the match (sp). We just got our leading match on this
                         Char-Box so a subsequent mismatch should terminate this thread => '_StopAtMismatch'.
                      */
-                     newT = newThread(pc+1, sp, loopCnt, gs, &dfltMatchCfg, _StopAtMismatch);
+                     newT = newThread(pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, _StopAtMismatch);
 
                      if(!soloAnchor(&ip->charBox))
                         { addLeadMatch(newT, str, cBoxStart, cBoxStart); }
@@ -715,7 +724,6 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         if(ip->opensGroup)                                       // and this chars-list also opened a subgroup
                         {
                            newT->subgroupStart = cBoxStart;
-                           printf("line %d ", __LINE__);
                            addMatch(newT, str, cBoxStart, sp-1);
                         }
                      }
@@ -730,7 +738,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         addR = TRUE;                                             // then add a new thread to 'next' applying existing CharBox start at this new char.
                         dfltMatchCfg.clone = TRUE;                               // Spawning a new thread so clone match list of the existing thread (instead of referencing it).
                         addThread(next,
-                           newThread(pc, cBoxStart+1, loopCnt, gs, &dfltMatchCfg,
+                           newThread(pc, cBoxStart+1, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg,
                               matchedMinimal ?                                   // Already got a (minimal) match?
                                  _StopAtMismatch : _EatMismatches ) );           // then end this thread upon hitting a mismatch -
                      }
@@ -749,7 +757,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      {                                                           // ...then advance to this char retry the existing CharsBox
                         addR = TRUE;                                             // starting at this new char.
                         addThread( next,
-                           newThread( pc, cBoxStart+1, loopCnt, gs, &dfltMatchCfg,
+                           newThread( pc, cBoxStart+1, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg,
                                        matchedMinimal ? _StopAtMismatch : _EatMismatches));
                      }
                   }                              // --- else continue below.
@@ -772,64 +780,33 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         into a fresh thread for the 'next' thread list, with 'sp' at the char after
                         the matched segment.
 
-                        Also, this was a char box; so bump the repeat count used by 'Split'
-                        to test repeat-ranges.
+                        Also, this was a char box; so bump the repeat count used by 'Split'to test repeat-ranges.
                      */
-                     newT = newThread(pc+1, sp, loopCnt, gs, &dfltMatchCfg, thrd->eatMismatches);
+                     newT = newThread(pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches);
 
+                     /* If the Chars-Box we matched is the 1st AND if it contains something besides an anchor then
+                        add a (leading) zero-length match interval i.e [box-start, box-start]. This match will be updated
+                        to a global match if and when the regex is exhausted.
+                     */
                      if(thrd->matches.put == 0 && !soloAnchor(&ip->charBox))
-                     {
-                           printf("line %d ", __LINE__);
-                        addMatch(newT, str, cBoxStart, cBoxStart);
-                     }
-#if 1
-                     if(ip->closesGroup)                                         // This chars-list closed a subgroup?
-                     {
-                        if(ip->opensGroup && gs == NULL)                         // and this chars-list also opened a subgroup
-                        {
-                           newT->subgroupStart = cBoxStart;
-                           if(cBoxStart != sp-1)
-                              { printf("line %d ", __LINE__); addMatch(newT, str, cBoxStart, sp-1); }
-                        }
-                        else if(gs != NULL)                                      // else is there's was an open subgroup on this path (which we close now)?
-                        {
-                           printf("line %d start %d ", __LINE__, gs-str); addMatch(newT, str, gs, sp-1);
-                        }
-                     }
-                     else if(gs != NULL)                                         // else there's a subgroup on this path which remains open?
-                     {
-                        newT->subgroupStart = gs;                                // then copy over 'start' marker into the fresh thread...
-                     }
-                     else if(ip->opensGroup && newT->subgroupStart == NULL)      // else this path opens a subgroup now?
-                     {
-                        newT->subgroupStart = sp;                                // Mark the start -> will be copied into the fresh thread
-                     }
-#else
-                     if(ip->closesGroup)                                         // This chars-list closed a subgroup?
-                     {
-                        if(ip->opensGroup &&                                     // and this chars-list also opened a subgroup? AND
-                           gs == NULL)                                           // we didn't already mark the start of the group?
-                        {
-                           newT->subgroupStart = cBoxStart;
-                           if(cBoxStart != sp-1)
-                              { printf("line %d ", __LINE__); addMatch(newT, str, cBoxStart, sp-1); }
-                        }
-                        else if(gs != NULL)                                      // else is there's was an open subgroup on this path (which we close now)?
-                        {
-                           newT->subgroupStart = NULL;
-                           printf("line %d start %d ", __LINE__, gs-str); addMatch(newT, str, gs, sp-1);
-                        }
-                     }
-                     else if(gs != NULL)                                         // else there's a subgroup on this path which remains open?
-                     {
-                        newT->subgroupStart = gs;                                // then copy over 'start' marker into the fresh thread...
-                     }
-                     else if(ip->opensGroup && newT->subgroupStart == NULL)      // else this path opens a subgroup now?
-                     {
-                        newT->subgroupStart = sp;                                // Mark the start -> will be copied into the fresh thread
-                     }
+                        { addMatch(newT, str, cBoxStart, cBoxStart); }
 
-#endif
+                     /* If this instruction opens a sub-group and we did NOT loop directly back to this instruction
+                        then we are starting a new subgroup which will also be the start of a new sub-match. Mark
+                        this instruction and also the postion in the source string.
+                     */
+                     if(ip->opensGroup && thrd->lastOpensSub != pc)        // Starting new subgroup.
+                     {
+                        newT->lastOpensSub = pc;                           // then mark program counter so we can tell if we revisit.
+                        newT->subgroupStart = cBoxStart;                         // and note the start of the (possible) sub-match in the source string.
+                     }
+                     else                                                        // else not starting a new subgroup...
+                        { }    // ...so leave 'lastOpensSub' & 'subgroupStart' as they were copied from previous thread (above).
+
+                     // If this instruction closes a subgroup then add a sub-match 'subgroupStart' open to close
+                     if(ip->closesGroup)
+                        { addMatch(newT, str, newT->subgroupStart, sp-1); }      // (sp-1, cuz src pointer is one-past subgroup close)
+
                                                                      dbgPrint("   %d(%d:) %s ==  %s    [%d --> %d(%d:) {%d}]\r\n",
                                                                         ti, pc, printRegexSample(&ip->charBox), printTriad(cBoxStart), ti, next->put, pc+1, loopCnt);
                      addThread(next, newT);                                      // Add thread we made to 'next'
@@ -911,7 +888,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                                                                                  ip->left < pc ? "++" : "");
                   addThread(curr, newThread(ip->left, sp,
                                              ip->left < pc ? loopCnt+1 : loopCnt,  // If jumping back then bump the loop cnt.
-                                             gs, &dfltMatchCfg, thrd->eatMismatches));
+                                             gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches));
 
                   /* If this JMP is the last opcode before match, then it can only be a jump back. (A jump to the
                      next instruction is redundant; the  compiler would never produce it.) If we are JMPing back
@@ -952,14 +929,14 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   if(!ip->repeats.valid || loopCnt < ip->repeats.max)             // Unconditional? OR is conditional AND have not tried max-repeats of current chars-block?
                   {
                      dfltMatchCfg.clone = FALSE;
-                     addThread(curr, newThread(ip->left, sp, ip->left < pc ? loopCnt+1 : loopCnt, gs, &dfltMatchCfg, thrd->eatMismatches));
+                     addThread(curr, newThread(ip->left, sp, ip->left < pc ? loopCnt+1 : loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches));
                      addL = TRUE;
                   }   // then this thread loops back to the current chars-block.
 
                   if(!ip->repeats.valid || loopCnt >= ip->repeats.min)            // Unconditional? OR is conditional AND have tried at least min-repeats of current chars-block.
                   {
                      dfltMatchCfg.clone = TRUE;
-                     addThread(curr, newThread(ip->right, sp, 0, gs, &dfltMatchCfg, thrd->eatMismatches));
+                     addThread(curr, newThread(ip->right, sp, 0, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches));
                      addR = TRUE;
                   }  // then will now also attempt to match the next text block.
                                                                         dbgPrint("   %d(%d:) split(%d %d) @ %s    [%d +>  %s,%s]   \t\t%s%s\r\n",
