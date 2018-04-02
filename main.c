@@ -284,21 +284,6 @@ PRIVATE void testRightOp(S_TestRightOperator const *tbl, U16 tblSize)
 /* -------------------------- end: Checks rightOperator() ------------------------------ */
 
 
-// -------------------------------- dbgPrint --------------------------------------
-#if 0
-PRIVATE void dbgPrint(C8 const *fmt, ...)
-{
-   va_list argptr;
-   va_start(argptr,fmt);
-
-   if(cfg.printEnable)
-   {
-      vfprintf(stdout, fmt, argptr);
-   }
-   va_end(argptr);
-}
-#endif
-
 /* ----------------------------------- matchesOK ---------------------------------
 
     Check matches [start,len] in 'ml' against checklist 'chk'. Print out any

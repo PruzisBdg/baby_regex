@@ -75,63 +75,6 @@
 // User must configures regex with RegexLT_Init().
 PUBLIC RegexLT_S_Cfg const *regexlt_cfg = NULL;
 
-
-/* --------------------------------- RegexLT_PrintMatchList ------------------------------ */
-
-PRIVATE void printOneMatch(RegexLT_S_Match const *m)
-{
-   #define _MaxChars 20
-   C8 buf[_MaxChars+1];
-   U8 len;
-
-   memcpy(buf, m->at, len = MinU8(m->len, _MaxChars));
-   buf[len] = '\0';
-   printf(" [%d %d] \'%s\'", m->idx, m->len, buf);
-
-   #undef _MaxChars
-}
-
-PUBLIC void RegexLT_PrintMatchList(RegexLT_S_MatchList const *ml)
-{
-   printf("\r\nMatches: list size = %d  matches = ",  ml->listSize);
-
-   if(ml->put == 0)
-      { printf("None!\r\n\r\n"); }
-   else                                            // at least a global match
-   {
-      U8 c;
-
-      printf("%d\r\n"                            // Number of matches
-               "   global: ", ml->put);            // 'global:"
-
-      printOneMatch(&ml->matches[0]);              // 'global [a,b]'
-
-      if(ml->put > 1)
-         { printf("\r\n   subs:   ");}
-      else
-         { printf("\r\n");}
-
-      for( c = 1; c < ml->put; c++ )
-         { printOneMatch(&ml->matches[c]); }       // 'subs: [1,43 'dog'  [7,9] 'cat'
-   }
-}
-
-/* ------------------------ RegexLT_PrintMatchList_OnOneLine ------------------------- */
-
-PUBLIC void RegexLT_PrintMatchList_OnOneLine(RegexLT_S_MatchList const *ml)
-{
-   if(ml->put == 0)
-      { printf("------ No matches"); }
-   else                                            // at least a global match
-   {
-      dbgPrint("------ Matches: ");
-      U8 c;
-      for( c = 0; c < ml->put; c++ )
-         { printOneMatch(&ml->matches[c]); }       // 'subs: [1,43 'dog'  [7,9] 'cat'
-   }
-
-}
-
 /* ----------------------------- newMatchList ------------------------------ */
 
 

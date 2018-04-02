@@ -187,6 +187,12 @@ PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxC
 
 PUBLIC C8 rightOperator(C8 const *rgx);
 
+#ifdef REGEXLT_PRINT_STDIO
+   #define regexlt_errPrint printf
+#else
+   #define regexlt_errPrint
+#endif
+
 #endif // REGEXLT_PRIVATE_H
 
 // ---------------------------------------- eof ------------------------------------------

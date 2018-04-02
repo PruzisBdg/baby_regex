@@ -241,7 +241,6 @@ PUBLIC S_RegexStats regexlt_prescan(C8 const *regex)
          s.classes = ctx.classCnt;
          // Each char-list, char-class and escaped char uses a seqment (i.e S_CharBox).
          s.charboxes = ctx.classCnt + ctx.escCnt + ctx.segCnt + (2 * ctx.operators) + 1;
-//         s.charboxes = ctx.classCnt + ctx.escCnt + ctx.segCnt + 1;
          s.subExprs = ctx.subExprs;
          break;
       }

@@ -21,6 +21,7 @@
 #define getCharClassByKey  regexlt_getCharClassByKey
 #define parseRepeat        regexlt_parseRepeat
 #define dbgPrint           regexlt_dbgPrint
+#define errPrint           regexlt_errPrint
 
 
 /* --------------------------------- CharClass_New -----------------------------------
@@ -84,7 +85,7 @@ PRIVATE BOOL nextCharsSeg(S_CharsBox *cb)
       cb->put++;
       return TRUE; }
    else {
-      printf("No room to add chars-segment --------- put %d bufSize %d\r\n", cb->put, cb->bufSize);
+      errPrint("No room to add chars-segment --------- put %d bufSize %d\r\n", cb->put, cb->bufSize);
       return FALSE; }
 }
 
@@ -393,7 +394,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
             case OpCode_Class:                        // --- Parsing a character class definition e.g '[0-9A-.....'
                if( (rtn = classParser_AddCh(&parseClass, sgs[cb->put].payload.charClass, &ch)) == E_Fail)
                {
-                  printf("unterminated char class\r\n");
+                  errPrint("unterminated char class\r\n");
                   return FALSE;
                }
                else if(rtn == E_Complete)

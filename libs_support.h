@@ -5,4 +5,6 @@
 #define RAM_IS
 #define BOOLEAN BOOL
 
+#define REGEXLT_PRINT_STDIO
+
 #endif // LIBS_SUPPORT_H_INCLUDED

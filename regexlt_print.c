@@ -1,6 +1,6 @@
 /* ------------------------------------------------------------------------------
 |
-| Non-backtracking Lite Regex - Degug/Development printouts & support.
+| Non-backtracking Lite Regex - Debug/Development printouts & support.
 |
 --------------------------------------------------------------------------------*/
 
@@ -24,6 +24,8 @@
 
 // -------------------------------- regexlt_dbgPrint --------------------------------------
 
+#ifdef REGEXLT_PRINT_STDIO
+
 PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...)
 {
    va_list argptr;
@@ -33,6 +35,11 @@ PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...)
       { vfprintf(stdout, fmt, argptr); }
    va_end(argptr);
 }
+
+#else
+PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...) {}
+
+#endif
 
 // ---------------------------------- opcodeNames ----------------------------------------
 
@@ -349,5 +356,60 @@ PUBLIC void regexlt_printProgram(S_Program *prog)
    dbgPrint("\r\n");
 }
 
+/* --------------------------------- RegexLT_PrintMatchList ------------------------------ */
+
+PRIVATE void printOneMatch(RegexLT_S_Match const *m)
+{
+   #define _MaxChars 20
+   C8 buf[_MaxChars+1];
+   U8 len;
+
+   memcpy(buf, m->at, len = MinU8(m->len, _MaxChars));
+   buf[len] = '\0';
+   printf(" [%d %d] \'%s\'", m->idx, m->len, buf);
+
+   #undef _MaxChars
+}
+
+PUBLIC void RegexLT_PrintMatchList(RegexLT_S_MatchList const *ml)
+{
+   printf("\r\nMatches: list size = %d  matches = ",  ml->listSize);
+
+   if(ml->put == 0)
+      { printf("None!\r\n\r\n"); }
+   else                                            // at least a global match
+   {
+      U8 c;
+
+      printf("%d\r\n"                            // Number of matches
+               "   global: ", ml->put);            // 'global:"
+
+      printOneMatch(&ml->matches[0]);              // 'global [a,b]'
+
+      if(ml->put > 1)
+         { printf("\r\n   subs:   ");}
+      else
+         { printf("\r\n");}
+
+      for( c = 1; c < ml->put; c++ )
+         { printOneMatch(&ml->matches[c]); }       // 'subs: [1,43 'dog'  [7,9] 'cat'
+   }
+}
+
+/* ------------------------ RegexLT_PrintMatchList_OnOneLine ------------------------- */
+
+PUBLIC void RegexLT_PrintMatchList_OnOneLine(RegexLT_S_MatchList const *ml)
+{
+   if(ml->put == 0)
+      { printf("------ No matches"); }
+   else                                            // at least a global match
+   {
+      dbgPrint("------ Matches: ");
+      U8 c;
+      for( c = 0; c < ml->put; c++ )
+         { printOneMatch(&ml->matches[c]); }       // 'subs: [1,43 'dog'  [7,9] 'cat'
+   }
+
+}
 
 // ------------------------------------------- eof ----------------------------------------------------

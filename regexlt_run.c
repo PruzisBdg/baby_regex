@@ -15,6 +15,7 @@
 
 // Private to RegexLT_'.
 #define dbgPrint           regexlt_dbgPrint
+#define errPrint           regexlt_errPrint
 #define safeFree           regexlt_safeFree
 #define safeFreeList       regexlt_safeFreeList
 #define getMemMultiple     regexlt_getMemMultiple
@@ -225,7 +226,7 @@ typedef struct {
 PRIVATE void addMatchSub(S_Thread *t, C8 const *inStr, C8 const *start, C8 const *end, BOOL eatLeads, BOOL replaceShorter)
 {
    if(start < inStr || end < start)                                     // 'start' before start of source string? OR 'end' before 'start'?
-      { printf("\r\n -------------- Illegal match parms (%d,%d)\r\n", start-inStr, end-start); }   // then illegal match interval.
+      { errPrint("\r\n -------------- Illegal match parms (%d,%d)\r\n", start-inStr, end-start); }   // then illegal match interval.
    else                                                                 // else match interval is fine. Continue...
    {
       // then the interval is this.
@@ -320,7 +321,7 @@ PRIVATE BOOL addThread(S_ThreadList *l, S_Thread const *toAdd)
 {
    if(l->put >= l->len)
    {
-      printf("****** No Add put %d len %d\r\n ***********\r\n", l->put, l->len);
+      errPrint("****** No Add put %d len %d\r\n ***********\r\n", l->put, l->len);
       return FALSE;
    }
    else
@@ -793,17 +794,17 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
                      /* If this instruction opens a sub-group and we did NOT loop directly back to this instruction
                         then we are starting a new subgroup which will also be the start of a new sub-match. Mark
-                        this instruction and also the postion in the source string.
+                        this instruction and also the position in the source string.
                      */
-                     if(ip->opensGroup && thrd->lastOpensSub != pc)        // Starting new subgroup.
+                     if(ip->opensGroup && thrd->lastOpensSub != pc)              // Starting new subgroup.
                      {
-                        newT->lastOpensSub = pc;                           // then mark program counter so we can tell if we revisit.
+                        newT->lastOpensSub = pc;                                 // then mark program counter so we can tell if we revisit.
                         newT->subgroupStart = cBoxStart;                         // and note the start of the (possible) sub-match in the source string.
                      }
                      else                                                        // else not starting a new subgroup...
                         { }    // ...so leave 'lastOpensSub' & 'subgroupStart' as they were copied from previous thread (above).
 
-                     // If this instruction closes a subgroup then add a sub-match 'subgroupStart' open to close
+                     // If this instruction closes a subgroup then add a sub-match from 'subgroupStart' to group close at 'sp-1'.
                      if(ip->closesGroup)
                         { addMatch(newT, str, newT->subgroupStart, sp-1); }      // (sp-1, cuz src pointer is one-past subgroup close)
 
@@ -843,7 +844,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   ml->put = 0;                                                   // then empty this list (in case an earlier thread matched and filled it)
 
                   if(execCycles == 0 && ti == 0)                                 // First instruction AND 1st time thru? (is 'OpCode_Match')
-                     {printf("line %d ", __LINE__); addMatch(thrd, str, str, str+strlen(str)-1); }             // then it's the empty regex; matches everything, so add the whole string.
+                     {errPrint("line %d ", __LINE__); addMatch(thrd, str, str, str+strlen(str)-1); }             // then it's the empty regex; matches everything, so add the whole string.
                   else                                                           // else it's a possible global match....
                      { thrd->matches.ms[0].len = cBoxStart - str - thrd->matches.ms[0].start; }    // ...we already marked the start in matches.ms[0]; add the length.
 
