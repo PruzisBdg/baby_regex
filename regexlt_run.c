@@ -477,14 +477,15 @@ PRIVATE C8 const * printRegexSample(S_CharsBox const *cb)
    #define _width 8
    static C8 rgxBuf[_width+2];
 
-   regexlt_sprintCharBox_partial(rgxBuf, cb, _width);
-   strcat(rgxBuf, "         ");
+   memset(rgxBuf, ' ', _width);                                         // Prefill with spaces.
    rgxBuf[_width] = '\0';
+   regexlt_sprintCharBox_partial(rgxBuf, cb, _width);                   // Whatever kind of CharsBox, print it into rxgBuf[_width].
+   rgxBuf[_width] = '\0';
+   // If printout fills all of output field then end with trailing ellipsis ...
    if( rgxBuf[_width-1] != ' ' )
       { rgxBuf[_width-1] = rgxBuf[_width-2] = rgxBuf[_width-3] = '.'; }
 
    return (C8 const *)rgxBuf;
-
 }
 
 /* ----------------------------------------- prntRpts --------------------------------------

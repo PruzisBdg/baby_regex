@@ -215,12 +215,17 @@ PUBLIC T_RegexRtn RegexLT_MatchProg(void *prog, C8 const *srcStr, RegexLT_S_Matc
                                                                      // Compile 'regexStr'...
       _prog->instrs.maxRunCnt = strChk.len + 10;                     // Thread run-limit is string size plus for some anchors.
 
-      // First, if caller supplies a hook to a match-list then make one.
-      if(ml != NULL) {
-         if(_prog->subExprs > regexlt_cfg->maxSubmatches) {
-            return E_RegexRtn_BadExpr; }
-         else if( (*ml = newMatchList(_prog->subExprs)) == NULL) {   // Big enuf to hold the global match plus sub-groups?
-            return E_RegexRtn_OutOfMemory; }}
+      // First, if caller supplies a hook to a match-list use the existing list in 'ml' or make a new ne if necessary.
+	  if(ml != NULL) {
+         //if(*ml != NULL) {
+         if(0) {
+		    if((*ml)->listSize >= _prog->subExprs && (*ml)->put <= (*ml)->listSize ) {
+		       (*ml)->put = 0; }}
+		 else {
+            if(_prog->subExprs > regexlt_cfg->maxSubmatches) {
+		       return E_RegexRtn_BadExpr; }
+		    else if( (*ml = newMatchList(_prog->subExprs)) == NULL) {   // Big enuf to hold the global match plus sub-groups?
+		       return E_RegexRtn_OutOfMemory; }}}
 
       /* Run the compiled program 'prog.instrs' on 'srcStr' with matches written to 'ml', if this is supplied.
          Any thread may have up to a global match plus a match for each sub-expression. So reserve 'subExprs'+1.
@@ -380,8 +385,11 @@ PUBLIC T_RegexRtn RegexLT_ReplaceProg(void *prog, C8 const *inStr, C8 const *rep
 
 PUBLIC void RegexLT_FreeMatches(RegexLT_S_MatchList const *ml)
 {
-   safeFree(ml->matches);     // First free matches.
-   safeFree((void*)ml);       // then the enclosing match-list;
+   if(ml != NULL)
+   {
+      safeFree(ml->matches);     // First free matches.
+      safeFree((void*)ml);       // then the enclosing match-list;
+   }
 }
 
 

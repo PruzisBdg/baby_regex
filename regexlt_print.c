@@ -37,8 +37,7 @@ PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...)
 }
 
 #else
-PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...) {}
-
+//PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...) {}
 #endif
 
 // ---------------------------------- opcodeNames ----------------------------------------

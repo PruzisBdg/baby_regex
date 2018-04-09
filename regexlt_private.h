@@ -43,7 +43,11 @@ typedef struct {
 } S_CntRegexParts;
 
 
+	#ifdef REGEXLT_PRINT_STDIO
 PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...);
+	#else
+#define regexlt_dbgPrint(...)	
+	#endif
 
 PUBLIC S_RegexStats regexlt_prescan(C8 const *regex);
 
