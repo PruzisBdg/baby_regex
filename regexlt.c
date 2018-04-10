@@ -28,8 +28,10 @@
 |  Public:
 |     RegexLT_Init()
 |     RegexLT_Compile()
+|     RegexLT_MatchProg()
 |     RegexLT_Match()
 |     RegexLT_Replace()
+|     RegexLT_ReplaceProg()
 |     RegexLT_PrintMatchList()
 |     RegexLT_PrintMatchList_OnOneLine()
 |     RegexLT_FreeMatches()
@@ -201,8 +203,18 @@ PUBLIC T_RegexRtn RegexLT_FreeProgram(void *prog)
    return E_RegexRtn_OK;
 }
 
-/* ----------------------------------------- RegexLT_MatchProg ------------------------------------- */
+/* ----------------------------------------- RegexLT_MatchProg -------------------------------------
 
+   Match 'srcStr' against 'prog' which is a program made by RegexLT_Compile().  If 'ml' is not
+   NULL then put any matches in 'ml'.
+
+   If 'ml' == NULL AND *ml == NULL then malloc() / create a new match list. If *ml != NULL
+   then presumes that 'ml' is an existing match list and, if '*(ml)->listSize' is legal, then
+   the list is cleared (*ml)->put <- 0, and matches are added to the list.
+
+   ***** Beware, when calling RegexLT_Match() for the 1st time '*ml' must either be initialised
+   to NULL OR it must be to an already made match-list. ******
+*/
 PUBLIC T_RegexRtn RegexLT_MatchProg(void *prog, C8 const *srcStr, RegexLT_S_MatchList **ml, RegexLT_T_Flags flags)
 {
    S_StrChkRtns strChk = inputOK(srcStr, regexlt_cfg->maxStrLen);    // Check for a legal source string.
@@ -215,17 +227,17 @@ PUBLIC T_RegexRtn RegexLT_MatchProg(void *prog, C8 const *srcStr, RegexLT_S_Matc
                                                                      // Compile 'regexStr'...
       _prog->instrs.maxRunCnt = strChk.len + 10;                     // Thread run-limit is string size plus for some anchors.
 
-      // First, if caller supplies a hook to a match-list use the existing list in 'ml' or make a new ne if necessary.
-	  if(ml != NULL) {
-         //if(*ml != NULL) {
-         if(0) {
-		    if((*ml)->listSize >= _prog->subExprs && (*ml)->put <= (*ml)->listSize ) {
-		       (*ml)->put = 0; }}
-		 else {
-            if(_prog->subExprs > regexlt_cfg->maxSubmatches) {
-		       return E_RegexRtn_BadExpr; }
-		    else if( (*ml = newMatchList(_prog->subExprs)) == NULL) {   // Big enuf to hold the global match plus sub-groups?
-		       return E_RegexRtn_OutOfMemory; }}}
+      // First, if caller supplies a hook to a match-list use the existing list in 'ml' or make a new new if necessary.
+
+	  if(ml != NULL) {                                                // There's a hook for a match-list?
+         if(*ml != NULL) {                                           // That hook is non-NULL? meaning there's already a list made?
+		    if((*ml)->listSize >= _prog->subExprs && (*ml)->put <= (*ml)->listSize ) {   // List size is kosher.
+		       (*ml)->put = 0; }}                                      // then clean off the list (just 'put' <- 0)
+		 else {                                                        // else hook is NULL, meaning we must malloc a list now.
+            if(_prog->subExprs > regexlt_cfg->maxSubmatches) {       // More sub-expressions than we counted in the pre-scan?
+		       return E_RegexRtn_BadExpr; }                            // How's that - regex or compile is messed up somehow
+		    else if( (*ml = newMatchList(_prog->subExprs)) == NULL) {  // else malloc() now; enuf to hold the global match plus sub-groups?
+		       return E_RegexRtn_OutOfMemory; }}}                      // Oops! Heap fail.
 
       /* Run the compiled program 'prog.instrs' on 'srcStr' with matches written to 'ml', if this is supplied.
          Any thread may have up to a global match plus a match for each sub-expression. So reserve 'subExprs'+1.
@@ -237,7 +249,14 @@ PUBLIC T_RegexRtn RegexLT_MatchProg(void *prog, C8 const *srcStr, RegexLT_S_Matc
 
 /* -------------------------------- RegexLT_Match --------------------------------------
 
-   Match 'srcStr' against 'regexStr'. If 'ml' is not NULL then add any matches to 'ml'.
+   Match 'srcStr' against 'regexStr', If 'ml' is not NULL then put any matches in 'ml'.
+
+   If 'ml' == NULL AND *ml == NULL then malloc() / create a new match list. If *ml != NULL
+   then presumes that 'ml' is an existing match list and, if '*(ml)->listSize' is legal, then
+   the list is cleared (*ml)->put <- 0, and matches are added to the list.
+
+   ***** Beware, when calling RegexLT_Match() for the 1st time '*ml' must either be initialised
+   to NULL OR it must be to an already made match-list. ******
 */
 PUBLIC T_RegexRtn RegexLT_Match(C8 const *regexStr, C8 const *srcStr, RegexLT_S_MatchList **ml, RegexLT_T_Flags flags)
 {
@@ -350,7 +369,8 @@ PUBLIC T_RegexRtn RegexLT_Replace(C8 const *regexStr, C8 const *inStr, C8 const 
    if(regexlt_cfg == NULL)                                              // User did not supply a cfg with RegexLT_Init().
       { return E_RegexRtn_BadCfg; }                                     // then go no further.
    else {
-      T_RegexRtn rtn;   RegexLT_S_MatchList *ml;
+      T_RegexRtn rtn;
+      RegexLT_S_MatchList *ml = NULL;                                   // Handle for match list. Must be NULL to signal a new match list to be malloc()ed.
 
       if( (rtn = RegexLT_Match(regexStr, inStr, &ml, _RegexLT_Flags_None)) != E_RegexRtn_Match )      // No match?
          { return rtn; }                                                // then return 'E_RegexRtn_NoMatch' or some error code.
@@ -370,7 +390,7 @@ PUBLIC T_RegexRtn RegexLT_ReplaceProg(void *prog, C8 const *inStr, C8 const *rep
    if(regexlt_cfg == NULL)                                              // User did not supply a cfg with RegexLT_Init().
       { return E_RegexRtn_BadCfg; }                                     // then go no further.
    else {
-      T_RegexRtn rtn;   RegexLT_S_MatchList *ml;
+      T_RegexRtn rtn;   RegexLT_S_MatchList *ml;                        // Handle for match list. Must be NULL to signal a new match list to be malloc()ed.
 
       if( (rtn = RegexLT_MatchProg(prog, inStr, &ml, _RegexLT_Flags_None)) != E_RegexRtn_Match )      // No match?
          { return rtn; }                                                // then return 'E_RegexRtn_NoMatch' or some error code.

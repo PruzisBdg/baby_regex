@@ -328,7 +328,7 @@ PRIVATE BOOL matchesOK(RegexLT_S_MatchList const *ml, S_MatchesCheck const *chk)
 
 PRIVATE BOOL runOneTest_PrintOneLine(S_Test const *t)
 {
-   RegexLT_S_MatchList *ml;
+   RegexLT_S_MatchList *ml = NULL;
 
    printf("   \'%-15s\' <- \'%-15s\'", t->regex, t->src);                           // Print the  regex and test string.
 
