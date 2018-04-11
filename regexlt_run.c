@@ -22,15 +22,22 @@
 
 #define br regexlt_cfg
 
+typedef BOOL T_CaseRule;
+typedef enum { eMatchCase = 0, eIgnoreCase } E_CaseRule;
 
 /* -------------------------------- matchedRegexCh ----------------------------------------- */
 
-PRIVATE BOOL matchedRegexCh(C8 regexCh, C8 ch)
+PRIVATE BOOL matchCI(C8 a, C8 b)
+   { return toupper(a) == toupper(b); }   // Case-insensitive?
+
+PRIVATE BOOL matchedRegexCh(C8 regexCh, C8 ch, T_CaseRule cr)
 {
    return
-      regexCh == '.'          // '.', i.e match anything?
-         ? TRUE               // is always TRUE
-         : ch == regexCh;     // otherwise TRUE if equal
+      regexCh == '.'                   // '.', i.e match anything?
+         ? TRUE                        // is always TRUE
+         : (cr == eIgnoreCase          // case-insensitive?
+               ? matchCI(ch, regexCh)  // then ignore case
+               : ch == regexCh );      // otherwise TRUE if equal
 }
 
 /* ------------------------------------ wordBoundary -----------------------------------------
@@ -82,9 +89,12 @@ PRIVATE BOOL notaWordBoundary(C8 const *start, C8 const *src)
 
    'start' should the beginning of the WHOLE input string; used to match the '^' anchor.
 
+   'cr' sets whether matching is case-sensitive or no. 'cr' may also be modified by this
+   function if there's a case/no-case control in 'chs'.
+
     Returns with 'in' at the 1st char AFTER the segment which matches 'chs'.
 */
-PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 const *end)
+PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 const *end, T_CaseRule *cr)
 {
    C8 ch;
 
@@ -112,7 +122,7 @@ PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 con
                for(i = 0; i < chs->payload.chars.len; i++, (*in)++)  // Until the end of the regex segment
                {
                   ch = **in;
-                  if(!matchedRegexCh(chs->payload.chars.start[i], ch))  // Input char did not match segment char?
+                  if(!matchedRegexCh(chs->payload.chars.start[i], ch, *cr))  // Input char did not match segment char?
                      { return FALSE; }                                  // Then this path has failed
                   else if(ch == '\0')                                   // End of input string?
                      { return FALSE; }                                  // then we exhausted the input before exhausting the regex-segment; Fail
@@ -126,8 +136,12 @@ PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 con
                else
                   { break; }                                // else continue through chars list
 
-            case OpCode_Anchor:           // --- A single anchor
-               if( (chs->payload.anchor.ch == '^' && *in <= start) ||               // Start anchor AND at or before start of input string? OR (should never be before but....)
+            case OpCode_Anchor:           // --- A single anchor or control char e.g case-sensitivity.
+               if(chs->payload.anchor.ch == 'I') {
+                  *cr = eMatchCase; }
+               else if(chs->payload.anchor.ch == 'i') {
+                  *cr = eIgnoreCase; }
+               else if( (chs->payload.anchor.ch == '^' && *in <= start) ||          // Start anchor AND at or before start of input string? OR (should never be before but....)
                    (chs->payload.anchor.ch == '$' && **in == '\0') ||               // End anchor AND at end of string? OR
                     chs->payload.anchor.ch == 'b' && wordBoundary(start, *in) ||    // Word boundary? OR
                     chs->payload.anchor.ch == 'B' && notaWordBoundary(start, *in))  // Not a word boundary?
@@ -200,14 +214,15 @@ PRIVATE BOOL copyInMatch(RegexLT_S_MatchList *ml, S_Match const *m, C8 const *st
 }
 
 typedef struct {
-    T_InstrIdx  pc;              // Program counter
-    C8 const   *sp;              // Source (input string) pointer.
-    T_RepeatCnt rptCnt;          // A run-count for the character set in this thread. For repeats e.g (Ha){3}
-    C8 const   *subgroupStart;   // If a subgroup was opened in this thread, then this is the 1st char of the subgroup.
-    T_InstrIdx  lastOpensSub;    // Instruction (PC) which opened the most recent sub-group / sub-expression.
-    S_MatchList matches;         // Matches which this thread has found - so far.
-    BOOL        eatMismatches;   // Eat (leading) mismatches), at the start of the regex
-                                 // Flag is defeated at the 1st match in a thread. Avoids thread blowup with 'A+..' which is implicitly '.*A+...' and just explodes.
+   T_InstrIdx  pc;              // Program counter
+   C8 const   *sp;              // Source (input string) pointer.
+   T_RepeatCnt rptCnt;          // A run-count for the character set in this thread. For repeats e.g (Ha){3}
+   C8 const   *subgroupStart;   // If a subgroup was opened in this thread, then this is the 1st char of the subgroup.
+   T_InstrIdx  lastOpensSub;    // Instruction (PC) which opened the most recent sub-group / sub-expression.
+   S_MatchList matches;         // Matches which this thread has found - so far.
+   BOOL        eatMismatches;   // Eat (leading) mismatches), at the start of the regex
+                                // Flag is defeated at the 1st match in a thread. Avoids thread blowup with 'A+..' which is implicitly '.*A+...' and just explodes.
+   T_CaseRule  caseRule;        // Match case; ignore case etc
 } S_Thread;
 
 #define _EatMismatches   TRUE
@@ -348,7 +363,7 @@ typedef struct {
    'src' is the current read of the input string. 'groupStart' and 'rpts' are copied from the
    thread which spawned this one.
 */
-PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 const *groupStart, T_InstrIdx subStartIdx, S_ThrdMatchCfg const *mcf, BOOL eatMismatches)
+PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 const *groupStart, T_InstrIdx subStartIdx, S_ThrdMatchCfg const *mcf, BOOL eatMismatches, T_CaseRule caseRule)
 {
    static S_Thread t;
 
@@ -358,6 +373,7 @@ PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 c
    t.subgroupStart = groupStart;       // If this thread starts a sub-group.
    t.lastOpensSub = subStartIdx;
    t.eatMismatches = eatMismatches;    // if this thread eats leading mismatches.
+   t.caseRule = caseRule;
 
    if(mcf->lst == NULL)                                                                // No existing matches to clone or reference?
    {
@@ -572,7 +588,7 @@ PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
          {                                               // Just add the submatch, if there's room.
             if(to->put < to->bufSize) {                  // Room in to[] yet?
                to->ms[to->put] = from->ms[c];            // then append from[c]
-               to->put++; dbgPrint("-##############################plus plus\r\n"); }                              // and to[] has an (additional) submatch.
+               to->put++; }                              // and to[] has an (additional) submatch.
          }
       }
    } // for each match in from[]
@@ -636,7 +652,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   NULL,                // No group start
                   0,                   // Park program counter for sub-group at instruction zero.
                   &matchesCfg0,        // Accumulate any matches here.
-                  _EatMismatches));    // Eat leading mismatches unless told otherwise.
+                  _EatMismatches,      // Eat leading mismatches unless told otherwise.
+                  eMatchCase));        // Match case is the default.
 
    dbgPrint("------ Trace:\r\n"
             "   '(<' eat-leading,   '==' 'matched char' ' !=' no match\r\n"
@@ -708,7 +725,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                {                                                                 // then advance thru input string until we find 1st match
                   addL = FALSE; addR = FALSE; cput = next->put;
 
-                  if( matchCharsList(ip->charBox.segs, &sp, str, mustEnd) == TRUE)    // Matched current CharBox?...
+                  if( matchCharsList(ip->charBox.segs, &sp, str, mustEnd, &thrd->caseRule) == TRUE)    // Matched current CharBox?...
                   {                                                              // ...yes, 'sp' is now at 1st char AFTER matched segment.
                      addL = TRUE;                                                // so we will advance this thread
 
@@ -716,7 +733,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         char in the input string after the match (sp). We just got our leading match on this
                         Char-Box so a subsequent mismatch should terminate this thread => '_StopAtMismatch'.
                      */
-                     newT = newThread(pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, _StopAtMismatch);
+                     newT = newThread(pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, _StopAtMismatch, thrd->caseRule);
 
                      if(!soloAnchor(&ip->charBox))
                         { addLeadMatch(newT, str, cBoxStart, cBoxStart); }
@@ -742,7 +759,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         addThread(next,
                            newThread(pc, cBoxStart+1, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg,
                               matchedMinimal ?                                   // Already got a (minimal) match?
-                                 _StopAtMismatch : _EatMismatches ) );           // then end this thread upon hitting a mismatch -
+                                 _StopAtMismatch : _EatMismatches, thrd->caseRule ) );           // then end this thread upon hitting a mismatch -
                      }
                   }
                   else                                                           // else failed to match this 1st Chars_Box?
@@ -760,7 +777,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         addR = TRUE;                                             // starting at this new char.
                         addThread( next,
                            newThread( pc, cBoxStart+1, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg,
-                                       matchedMinimal ? _StopAtMismatch : _EatMismatches));
+                                       matchedMinimal ? _StopAtMismatch : _EatMismatches, thrd->caseRule));
                      }
                   }                              // --- else continue below.
                                                                      dbgPrint("   %d(%d:) %s %s  %s    [%d --> %s,%s {%d}]\r\n",
@@ -775,7 +792,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                }
                else                                                  // else we got the 1st match (above)
                {
-                  if( matchCharsList(ip->charBox.segs, &sp, str, mustEnd) == TRUE)     // Source chars matched? ...
+                  if( matchCharsList(ip->charBox.segs, &sp, str, mustEnd, &thrd->caseRule) == TRUE)     // Source chars matched? ...
                   {
                                                                                  // ...(and 'sp' is advanced beyond the matched segment)
                      /* Because we matched, continue this execution path. Package the NEXT instruction
@@ -784,7 +801,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
                         Also, this was a char box; so bump the repeat count used by 'Split'to test repeat-ranges.
                      */
-                     newT = newThread(pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches);
+                     newT = newThread(pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule);
 
                      /* If the Chars-Box we matched is the 1st AND if it contains something besides an anchor then
                         add a (leading) zero-length match interval i.e [box-start, box-start]. This match will be updated
@@ -890,7 +907,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                                                                                  ip->left < pc ? "++" : "");
                   addThread(curr, newThread(ip->left, sp,
                                              ip->left < pc ? loopCnt+1 : loopCnt,  // If jumping back then bump the loop cnt.
-                                             gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches));
+                                             gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule));
 
                   /* If this JMP is the last opcode before match, then it can only be a jump back. (A jump to the
                      next instruction is redundant; the  compiler would never produce it.) If we are JMPing back
@@ -931,14 +948,14 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                   if(!ip->repeats.valid || loopCnt < ip->repeats.max)             // Unconditional? OR is conditional AND have not tried max-repeats of current chars-block?
                   {
                      dfltMatchCfg.clone = FALSE;
-                     addThread(curr, newThread(ip->left, sp, ip->left < pc ? loopCnt+1 : loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches));
+                     addThread(curr, newThread(ip->left, sp, ip->left < pc ? loopCnt+1 : loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule));
                      addL = TRUE;
                   }   // then this thread loops back to the current chars-block.
 
                   if(!ip->repeats.valid || loopCnt >= ip->repeats.min)            // Unconditional? OR is conditional AND have tried at least min-repeats of current chars-block.
                   {
                      dfltMatchCfg.clone = TRUE;
-                     addThread(curr, newThread(ip->right, sp, 0, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches));
+                     addThread(curr, newThread(ip->right, sp, 0, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule));
                      addR = TRUE;
                   }  // then will now also attempt to match the next text block.
                                                                         dbgPrint("   %d(%d:) split(%d %d) @ %s    [%d +>  %s,%s]   \t\t%s%s\r\n",

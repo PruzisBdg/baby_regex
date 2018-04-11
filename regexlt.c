@@ -405,11 +405,9 @@ PUBLIC T_RegexRtn RegexLT_ReplaceProg(void *prog, C8 const *inStr, C8 const *rep
 
 PUBLIC void RegexLT_FreeMatches(RegexLT_S_MatchList const *ml)
 {
-   if(ml != NULL)
-   {
-      safeFree(ml->matches);     // First free matches.
-      safeFree((void*)ml);       // then the enclosing match-list;
-   }
+   if(ml != NULL) {              // There IS a match-list?
+      safeFree(ml->matches);     // then, first free matches.
+      safeFree((void*)ml); }     // then the enclosing list;
 }
 
 

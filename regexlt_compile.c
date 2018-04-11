@@ -132,7 +132,7 @@ PRIVATE BOOL bumpIfEmpty(S_CharsBox *cb)
 */
 
 PRIVATE C8 const escapedChars[] = "\\|.*?{}()^$";
-PRIVATE C8 const escapedAnchors[] = "bB";                // Just word boundaries for now
+PRIVATE C8 const escapedAnchors[] = "bBIi";              // Word boundaries 'Bb' and case/no-case 'iI'
 
 PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_CharsBox *cb, C8 ch)
 {
