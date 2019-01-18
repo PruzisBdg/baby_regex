@@ -4,6 +4,7 @@
 #include "GenericTypeDefs.h"
 #define RAM_IS
 #define BOOLEAN BOOL
+#define bool BOOL
 
 #define REGEXLT_PRINT_STDIO
 
