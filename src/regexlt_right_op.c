@@ -1,6 +1,6 @@
 /* ------------------------------------------------------------------------------
 |
-| Non-backtracking Lite Regex - Compile search expression.
+| Non-backtracking Lite Regex - Binding operator.
 |
 --------------------------------------------------------------------------------*/
 

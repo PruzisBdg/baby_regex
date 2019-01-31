@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="BabyRegex" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/BabyRegex" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+				</Compiler>
+				<Linker>
+					<Add library="C:/spj6/swr/arith/arith_x86_gcc/bin/Debug/libarith_x86_gcc.a" />
+					<Add library="C:/spj6/swr/util/codeblocks_gcc/bin/Debug/libutil_x86_gcc.a" />
+				</Linker>
+			</Target>
+			<Target title="Release">
+				<Option output="bin/Release/BabyRegex" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+			<Target title="Unity_TDD">
+				<Option output="BabyRegex" prefix_auto="1" extension_auto="1" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option use_console_runner="0" />
+			</Target>
+			<Target title="Static_Lib">
+				<Option output="BabyRegex" prefix_auto="1" extension_auto="1" />
+				<Option working_dir="" />
+				<Option type="2" />
+				<Option compiler="gcc" />
+				<Option createDefFile="1" />
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-std=c99" />
+			<Add directory="C:/unity/src" />
+			<Add directory="C:/spj6/swr/arith/public" />
+			<Add directory="C:/spj6/swr/tiny2/GenericTypes" />
+			<Add directory="C:/spj6/swr/util/public" />
+			<Add directory="../src" />
+			<Add directory="." />
+		</Compiler>
+		<Unit filename="../src/regexlt.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../src/regexlt_char_class.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../src/regexlt_compile.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../src/regexlt_mem.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../src/regexlt_prescan.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../src/regexlt_print.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../src/regexlt_private.h">
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../src/regexlt_repeat.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../src/regexlt_right_op.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../src/regexlt_run.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="../unit_test/baby_regex_common_build.mak">
+			<Option target="Unity_TDD" />
+		</Unit>
+		<Unit filename="../unit_test/baby_regex_common_pre.mak">
+			<Option target="Unity_TDD" />
+		</Unit>
+		<Unit filename="libs_support.h">
+			<Option target="Debug" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
+		<Unit filename="main.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
