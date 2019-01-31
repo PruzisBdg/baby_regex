@@ -6,7 +6,7 @@
 		<Option pch_mode="2" />
 		<Option compiler="gcc" />
 		<Build>
-			<Target title="Debug">
+			<Target title="Debug_Console">
 				<Option output="bin/Debug/BabyRegex" prefix_auto="1" extension_auto="1" />
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
@@ -57,60 +57,60 @@
 		</Compiler>
 		<Unit filename="../src/regexlt.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="../src/regexlt_char_class.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="../src/regexlt_compile.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="../src/regexlt_mem.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="../src/regexlt_prescan.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="../src/regexlt_print.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="../src/regexlt_private.h">
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="../src/regexlt_repeat.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="../src/regexlt_right_op.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="../src/regexlt_run.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
@@ -121,13 +121,13 @@
 			<Option target="Unity_TDD" />
 		</Unit>
 		<Unit filename="libs_support.h">
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 			<Option target="Static_Lib" />
 		</Unit>
 		<Unit filename="main.c">
 			<Option compilerVar="CC" />
-			<Option target="Debug" />
+			<Option target="Debug_Console" />
 			<Option target="Release" />
 		</Unit>
 		<Extensions>
