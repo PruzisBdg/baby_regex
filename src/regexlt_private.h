@@ -46,7 +46,7 @@ typedef struct {
 	#ifdef REGEXLT_PRINT_STDIO
 PUBLIC void regexlt_dbgPrint(C8 const *fmt, ...);
 	#else
-#define regexlt_dbgPrint(...)	
+#define regexlt_dbgPrint(...)
 	#endif
 
 PUBLIC S_RegexStats regexlt_prescan(C8 const *regex);
@@ -196,6 +196,10 @@ PUBLIC C8 rightOperator(C8 const *rgx);
 #else
    #define regexlt_errPrint
 #endif
+
+// -------- Export for Test Harness
+   #if _TARGET_IS == _TARGET_UNITY_TDD
+   #endif
 
 #endif // REGEXLT_PRIVATE_H
 
