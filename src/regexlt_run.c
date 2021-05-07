@@ -141,10 +141,10 @@ PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 con
                   *cr = eMatchCase; }
                else if(chs->payload.anchor.ch == 'i') {
                   *cr = eIgnoreCase; }
-               else if( (chs->payload.anchor.ch == '^' && *in <= start) ||          // Start anchor AND at or before start of input string? OR (should never be before but....)
-                   (chs->payload.anchor.ch == '$' && **in == '\0') ||               // End anchor AND at end of string? OR
-                    chs->payload.anchor.ch == 'b' && wordBoundary(start, *in) ||    // Word boundary? OR
-                    chs->payload.anchor.ch == 'B' && notaWordBoundary(start, *in))  // Not a word boundary?
+               else if( (chs->payload.anchor.ch == '^' && *in <= start) ||             // Start anchor AND at or before start of input string? OR (should never be before but....)
+                   (chs->payload.anchor.ch == '$' && **in == '\0') ||                  // End anchor AND at end of string? OR
+                    (chs->payload.anchor.ch == 'b' && wordBoundary(start, *in)) ||     // Word boundary? OR
+                    (chs->payload.anchor.ch == 'B' && notaWordBoundary(start, *in)))   // Not a word boundary?
                   { break; }                                // then continue through chars list
                else
                   { return FALSE; }                         // else fail.
