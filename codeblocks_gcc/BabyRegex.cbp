@@ -43,6 +43,9 @@
 				<Option type="2" />
 				<Option compiler="gcc" />
 				<Option createDefFile="1" />
+				<Compiler>
+					<Add option="-D__TARGET_IS_X86_STATIC_LIB" />
+				</Compiler>
 			</Target>
 		</Build>
 		<Compiler>
@@ -55,6 +58,11 @@
 			<Add directory="../src" />
 			<Add directory="." />
 		</Compiler>
+		<Unit filename="../src/libs_support.h">
+			<Option target="Debug_Console" />
+			<Option target="Release" />
+			<Option target="Static_Lib" />
+		</Unit>
 		<Unit filename="../src/regexlt.c">
 			<Option compilerVar="CC" />
 			<Option target="Debug_Console" />
@@ -120,10 +128,12 @@
 		<Unit filename="../unit_test/baby_regex_common_pre.mak">
 			<Option target="Unity_TDD" />
 		</Unit>
-		<Unit filename="libs_support.h">
-			<Option target="Debug_Console" />
-			<Option target="Release" />
-			<Option target="Static_Lib" />
+		<Unit filename="../unit_test/finds/finds.mak">
+			<Option target="Unity_TDD" />
+		</Unit>
+		<Unit filename="../unit_test/finds/test-finds.c">
+			<Option compilerVar="CC" />
+			<Option target="Unity_TDD" />
 		</Unit>
 		<Unit filename="main.c">
 			<Option compilerVar="CC" />
