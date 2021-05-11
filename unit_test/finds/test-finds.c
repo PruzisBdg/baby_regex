@@ -322,9 +322,7 @@ void test_Finds(void)
       // Regex            Test string        Result code           Matches (if any)
       //                                                      {how_many [start, len]..}
       // ----------------------------------------------------------------------------
-      //{ ".{2}def",      "aaadefghij",           E_RegexRtn_Match,    {1, {{1,5}}}         },       // Exactly 2 + def -> 'bcdef'
-      { "a{2}def",      "aaadefghi",            E_RegexRtn_Match,    {1, {{1,5}}}         },       // Exactly 2 + def -> 'bcdef'
-#if 0
+#if 1
       { "abc",          "",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
       { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
 
@@ -338,6 +336,8 @@ void test_Finds(void)
       { "\\bcat\\d",       "acat1 cat2",        E_RegexRtn_Match,    {1, {{6,4}}}         },       // Ignore 'cat1' because it's not at start of word.
 
       { ".*def",        "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },       // start to 'def' -> 'abcdef'
+      { ".{2}def",      "aaadefghij",           E_RegexRtn_Match,    {1, {{1,5}}}         },       // Exactly 2 + def -> 'bcdef'
+      { "a{2}def",      "aaadefghi",            E_RegexRtn_Match,    {1, {{1,5}}}         },       // Exactly 2 + def -> 'bcdef'
 
       // Repeat counts
       //{ "a{2}def",      "abcdefghij",           E_RegexRtn_Match,    {1, {{1,6}}}         },       // Exactly 2 + def -> 'bcdef'
