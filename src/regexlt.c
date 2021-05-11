@@ -57,11 +57,6 @@
 
 // Private to RegexLT_'.
 #define dbgPrint           regexlt_dbgPrint
-#define classParser_Init   regexlt_classParser_Init
-#define classParser_AddDef regexlt_classParser_AddDef
-#define classParser_AddCh  regexlt_classParser_AddCh
-#define getCharClassByKey  regexlt_getCharClassByKey
-#define parseRepeat        regexlt_parseRepeat
 #define compileRegex       regexlt_compileRegex
 #define runCompiledRegex   regexlt_runCompiledRegex
 #define printProgram       regexlt_printProgram

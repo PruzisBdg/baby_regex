@@ -13,6 +13,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
+					<Add option="-D__TARGET_IS_CONSOLE" />
 				</Compiler>
 				<Linker>
 					<Add library="C:/spj6/swr/arith/arith_x86_gcc/bin/Debug/libarith_x86_gcc.a" />

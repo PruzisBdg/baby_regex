@@ -1,10 +1,19 @@
+#include "libs_support.h"
+   #if _TARGET_IS == _TARGET_UNITY_TDD
 #include "unity.h"
+#define _TRACE_PRINTS_ON false
+   #else
+#define TEST_FAIL()
+#define _TRACE_PRINTS_ON true
+   #endif // _TARGET_IS
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include "util.h"
 #include "regexlt_private.h"
 
+PUBLIC U16 tdd_TestNum;    // For labeling error messages with the test that failed.
 
 // =============================== Tests start here ==================================
 
@@ -183,27 +192,6 @@ typedef struct {
 } S_Test;
 
 
-#if 1
-#else
-
-PRIVATE RegexLT_S_Cfg cfg = {
-   .getMem        = getMemCleared,
-   .free          = myFree,
-   .printEnable   = TRUE,
-   .maxSubmatches = 9,
-   .maxRegexLen   = MAX_U8,
-   .maxStrLen     = 500
-};
-
-PRIVATE S_Test const tests[] = {
-//   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
-//   { "\\D\\d{5}(-\\d{4})?",          "Rustic 34 Rise, Oakfield 12345",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
-//   { "\\D(\\d{5}(-\\d{4})?)",          "Rustic 34 Rise, Oakfield 12345-6789",                     E_RegexRtn_Match,  {1, {{0,4}}}              },       // The empty string is no-match
-   { "fob_([\\d]{5,10})_([\\d]{1,3})\\.log", "fob_098765432_1.log",    E_RegexRtn_Match,  {3, {{0,19}, {4,9}, {14,1}}}             },       // The empty string is no-match
-};
-
-#endif
-
 /* ----------------------------------- matchesOK ---------------------------------
 
     Check matches [start,len] in 'ml' against checklist 'chk'. Print out any
@@ -254,7 +242,7 @@ PRIVATE BOOL runOneTest_PrintOneLine(U16 idx, S_Test const *t, bool printAllTest
    RegexLT_S_MatchList *ml = NULL;
 
    C8 rgx[200];
-   sprintf(rgx, "%-2d:   \'%-15s\' <- \'%-15s\'", idx, t->regex, t->src);                           // Print the  regex and test string.
+   sprintf(rgx, "%-2d:   \'%-15s\' <- \'%-15s\'", idx, t->regex, t->src);           // Print the  regex and test string.
 
    if(t->replace == NULL)                                                           // This test is a match-only, no replace?
    {
@@ -262,7 +250,7 @@ PRIVATE BOOL runOneTest_PrintOneLine(U16 idx, S_Test const *t, bool printAllTest
 
       if(rtn != t->rtn)                                                             // Incorrect result code?
       {
-         printf("    incorrect return:  expected \'%s\', \'got\' %s\r\n", RegexLT_RtnStr(t->rtn), RegexLT_RtnStr(rtn) );
+         printf("%s incorrect return:  expected \'%s\', \'got\' %s\r\n", rgx, RegexLT_RtnStr(t->rtn), RegexLT_RtnStr(rtn) );
          return FALSE;
       }
       else                                                                          // else result code was correct.
@@ -271,13 +259,13 @@ PRIVATE BOOL runOneTest_PrintOneLine(U16 idx, S_Test const *t, bool printAllTest
          {
 
             C8 b0[100];
-            bool rtn = matchesOK(b0, ml, &t->matchChk);                                     // if matches don't agree with those listed in the test, print the discrepancy
+            bool rtn = matchesOK(b0, ml, &t->matchChk);                             // if matches don't agree with those listed in the test, print the discrepancy
 
             if(rtn == false || printAllTests == true)
             {
                printf("%s", rgx);
-               RegexLT_PrintMatchList_OnOneLine(ml);                                   // then print matches
-               printf("%s\r\n", b0);                                                         // Drop a line, for the next test, but...
+               RegexLT_PrintMatchList_OnOneLine(ml);                                // then print matches
+               printf("%s\r\n", b0);                                                // Drop a line, for the next test, but...
             }
 
             return rtn;
@@ -334,6 +322,9 @@ void test_Finds(void)
       // Regex            Test string        Result code           Matches (if any)
       //                                                      {how_many [start, len]..}
       // ----------------------------------------------------------------------------
+      //{ ".{2}def",      "aaadefghij",           E_RegexRtn_Match,    {1, {{1,5}}}         },       // Exactly 2 + def -> 'bcdef'
+      { "a{2}def",      "aaadefghi",            E_RegexRtn_Match,    {1, {{1,5}}}         },       // Exactly 2 + def -> 'bcdef'
+#if 0
       { "abc",          "",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
       { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
 
@@ -347,11 +338,24 @@ void test_Finds(void)
       { "\\bcat\\d",       "acat1 cat2",        E_RegexRtn_Match,    {1, {{6,4}}}         },       // Ignore 'cat1' because it's not at start of word.
 
       { ".*def",        "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },       // start to 'def' -> 'abcdef'
-      { ".{2,}def",     "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },       // 2 or more + 'def' -> 'abcdef'
+
+      // Repeat counts
+      //{ "a{2}def",      "abcdefghij",           E_RegexRtn_Match,    {1, {{1,6}}}         },       // Exactly 2 + def -> 'bcdef'
+      { ".{0,}def",     "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },       // 0 or more + 'def' -> 'abcdef'
+      { ".{2,}def",     "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },       // Exactly 2 + def -> 'bcdef'
       { ".{3,}def",     "abcdefghij",           E_RegexRtn_Match,    {1, {{0,6}}}         },       // 3 or more + 'def' -> 'abcdef'
-      { ".*de{1}f",     "abcdeefghij",          E_RegexRtn_NoMatch,  {0, {}}              },
-      { ".*de{2}f",     "abcdeefghij",          E_RegexRtn_Match,    {1, {{0,7}}}         },
+      { ".{4,}def",     "abcdefghij",           E_RegexRtn_NoMatch,  {1, {}}              },       // 4 or more + 'def', can't satisfy -> no match
+
+      { ".*dex{0}f",     "abcdefghij",          E_RegexRtn_Match,    {1, {{0,6}}}         },       // Zero repeats of 'x' within 'def' matches 'def'.
+
+      { ".*de{2}f",     "abcdeefghij",          E_RegexRtn_Match,    {1, {{0,7}}}         },       // Exactly 2  'e' in 'deef' -> Match
+      { ".*de{1,2}f",   "abcdeefghij",          E_RegexRtn_Match,    {1, {{0,7}}}         },       // 1 or 2  'e' in 'deef' -> Match
+      { ".*de{1,3}f",   "abcdeefghij",          E_RegexRtn_Match,    {1, {{0,7}}}         },       // 1..3  'e'  in 'deef' -> Match
+      { ".*de{2,4}f",   "abcdeefghij",          E_RegexRtn_Match,    {1, {{0,7}}}         },       // 2..4  'e'  in 'deef' -> Match
+
+      { ".*de{1}f",     "abcdeefghij",          E_RegexRtn_NoMatch,  {0, {}}              },       // Exactly 1 'e' in 'deef' -> no match.
       { ".*de{3}f",     "abcdeefghij",          E_RegexRtn_NoMatch,  {0, {}}              },
+
       { "def",          "abcdefghij",           E_RegexRtn_Match,    {1, {{3,3}}}         },
       { ".*d(e*)f",     "abcdeefghij",          E_RegexRtn_Match,    {2, {{0,7}, {4,2}}}  },
       { ".*d(ef)+",     "abcdefefghij",         E_RegexRtn_Match,    {2, {{0,8}, {4,4}}}  },
@@ -391,12 +395,13 @@ void test_Finds(void)
       // Indexed filename.
       { "fob_([\\d]{6})_([\\d]{1,3})\\.log",    "fob_123456_123.log",    E_RegexRtn_Match,  {3, {{0,18}, {4,6}, {11,3}}}             },       // The empty string is no-match
       { "fob_([\\d]{5,10})_([\\d]{1,3})\\.log", "fob_098765432_1.log",    E_RegexRtn_Match,  {3, {{0,19}, {4,9}, {14,1}}}             },       // The empty string is no-match
+#endif
    };
 
    RegexLT_S_Cfg cfg = {
       .getMem        = getMemCleared,
       .free          = myFree,
-      .printEnable   = FALSE,
+      .printEnable   = _TRACE_PRINTS_ON,
       .maxSubmatches = 9,
       .maxRegexLen   = MAX_U8,
       .maxStrLen     = MAX_U8
@@ -407,6 +412,7 @@ void test_Finds(void)
    U8 c, fails;
    for(c = 0, fails = 0; c < RECORDS_IN(tests); c++)
    {
+      tdd_TestNum = c;
       if( runOneTest_PrintOneLine(c, &tests[c], _PrintFailsOnly) == FALSE)
          { fails++; }
    }

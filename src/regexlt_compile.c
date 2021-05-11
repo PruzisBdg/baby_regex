@@ -425,7 +425,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
    The 'put' is advanced to the next free instruction slot.
 */
 
-PRIVATE void clearRepeats(S_RepeatSpec *r) {r->min = r->max = 0; r->valid = FALSE; }
+PRIVATE void clearRepeats(S_RepeatSpec *r) {r->min = r->max = 0; r->cntsValid = FALSE; r->always = FALSE; }
 
 PRIVATE S_CharsBox const emptyCharsBox =
    {.segs = NULL, .put = 0, .len = 0, .opensGroup = FALSE, .closesGroup = FALSE, .eatUntilMatch = FALSE };
@@ -460,7 +460,7 @@ PRIVATE void addSplit(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
     { addSplitAbs(p, p->instrs.put, U16plusS16_toU16(p->instrs.put, jmpRelLeft), U16plusS16_toU16(p->instrs.put, jmpRelRight)); }
 
 
- PRIVATE void addSplit_wRepeats(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight, S_RepeatSpec const *r)
+PRIVATE void addSplit_wRepeats(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight, S_RepeatSpec const *r)
 {
    S_Instr *ins = &p->instrs.buf[p->instrs.put];
 
@@ -468,9 +468,19 @@ PRIVATE void addSplit(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
    ins->charBox = emptyCharsBox;
    ins->left  = U16plusS16_toU16(p->instrs.put, jmpRelLeft);
    ins->right = U16plusS16_toU16(p->instrs.put, jmpRelRight);
-   ins->repeats.min = r->min;
-   ins->repeats.max = r->max;
-   ins->repeats.valid = TRUE;
+   ins->repeats = *r;
+   p->instrs.put++;
+}
+
+PRIVATE void addSplit_wMore(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
+{
+   S_Instr *ins = &p->instrs.buf[p->instrs.put];
+
+   ins->opcode = OpCode_Split;
+   ins->charBox = emptyCharsBox;
+   ins->left  = U16plusS16_toU16(p->instrs.put, jmpRelLeft);
+   ins->right = U16plusS16_toU16(p->instrs.put, jmpRelRight);
+   ins->repeats = (S_RepeatSpec){.cntsValid = FALSE, .always = TRUE};
    p->instrs.put++;
 }
 
@@ -533,6 +543,40 @@ PRIVATE void attachCharBox(S_Program *p, S_CharsBox *cb)
          // Clear branches and repeats; they are not used.
          ins->left = 0; ins->right = 0;
          clearRepeats(&ins->repeats);
+
+         // If this CharBox opens or closes a subgroup, then add that attribute to the instruction.
+         if(cb->opensGroup == TRUE)
+            { ins->opensGroup = TRUE; }
+
+         if(cb->closesGroup == TRUE)
+            { ins->closesGroup = TRUE; }
+
+         p->instrs.put++;                                // Advance 'Put' to next instruction
+         p->chars.put += cb->len;                        // Also bump 'put' for the chars-group store to next free.
+
+         cb->len = 0;                                    // Empty 'cb' so it won't be reused by a later attachCharBox().
+      }
+   }
+}
+
+PRIVATE void attachCharBox_wRepeats(S_Program *p, S_CharsBox *cb, S_RepeatSpec const *rpts)
+{
+   if(cb != NULL)                                        // 'cb' exists?
+   {
+      if(cb->len != 0)                                   // 'cb' has content?
+      {
+         S_Instr *ins = &p->instrs.buf[p->instrs.put];   // then will make a new instruction at the current 'put'
+
+         ins->opcode = OpCode_CharBox;                   // This instruction is a 'CharBox'.
+         ins->charBox = *cb;                             // and this is the chars-list is contains.
+
+         // Clear branches and repeats; they are not used.
+         ins->left = 0; ins->right = 0;
+
+         if(rpts == NULL)
+            { clearRepeats(&ins->repeats); }
+         else
+            { ins->repeats = *rpts; }
 
          // If this CharBox opens or closes a subgroup, then add that attribute to the instruction.
          if(cb->opensGroup == TRUE)
@@ -658,11 +702,20 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
 
             case '*':                                 // --- Zero or more
                if(cb.len == 0)                              // No CBox to add? (was closed out by a preceding group)
-                  { addSplit(prog, +1, +2); }               // Either try next JMP or skip it
+                  { addSplit_wMore(prog, +1, +2); }         // Either try next JMP or skip it
                else {                                       // else there is a CBox
-                  addSplit(prog, +1, +3);                   // Either try that CBox repeatedly or skip past the JMP which is beyond it
-                  attachCharBox(prog,                       // This is 'next'.
-                     lookaheadFor_GroupClose(&cb, rgxP)); } // If ')' after the '*' then close current subgroup at the CharBox.
+                  addSplit_wMore(prog, +1, +3);             // Either try that CBox repeatedly or skip past the JMP which is beyond it
+
+                  /* Attach the CBox, but also set the repeat-specifier to 'always' = '*', same as in the preceding
+                     Split. When executing the compiled regex (regexlt_run.c/runOnce()) if the CBox has no
+                     left-anchor AND the Specifier is right-open e.g 'a*' or 'a{3,}', then runOnce() does NOT
+                     fork the thread at the CBox. E.g with 'a*efg' vs 'aaaaefg' the maximal match starts
+                     at the 1st 'a'; there's no point in spawning threads to check from the 2nd, 3rd and 4th
+                     'a''s onward.
+                  */
+                  attachCharBox_wRepeats(prog,
+                     lookaheadFor_GroupClose(&cb, rgxP),    // If ')' after the '*' then close current subgroup at the CharBox.
+                     &(S_RepeatSpec){.always = TRUE} ); }   // Say this CBox has no repeat-limit i.e 'a*'.
 
                addJump(prog, MinS16(-2, prevCBox(prog)));   // then JMP back to retry the previous CBox (but not the one we added, which is '-1')
 
@@ -692,17 +745,29 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                break;
 
             case '{':                                 // --- Opens a repeat specifier e.g {2,5} (match preceding 2 to 5 times}
+               /* (Attempt to) parse a repeat-specifier into 'rpt'. If success, then 'rgxP' advances
+                  to after the closing '}'.
+               */
                if(parseRepeat(&rpt, &rgxP) == E_Fail)    // Was not any of e.g {3}, {3,} or {3,5}?
                {
                   return FALSE;                          // then regex is malformed.
                }
-               else                                      // else got a repeat specifier.
+               else                                      // else got a repeat specifier intp 'rpt'
                {
-                  addSplit_wRepeats(prog, +1, +3, &rpt); // Write instructions as for 'zero-or-more', but with repeat specifiers non-zero.
+                  addSplit_wRepeats(prog, +1, +3, &rpt); // Write a 'Split' ('zero-or-more') with 'rpt' attached.
 
+                  // If e.g '(ab{3,5})' then the ')' closes the group which started at the preceding CBox.
                   if(*rgxP == ')')
                      {cb.closesGroup = TRUE;}
-                  attachCharBox(prog, &cb );
+
+                  /* Attach the CBox, but also clone the repeat-specifier which was placed in the preceding
+                     Split. When executing the compiled regex (regexlt_run.c/runOnce()) if the CBox has no
+                     left-anchor AND the Specifier is right-open e.g 'a*' or 'a{3,}', then runOnce() does NOT
+                     fork the thread at the CBox. E.g with 'a{3,}efg' vs 'aaaaefg' the maximal match starts
+                     at the 1st 'a' and there's no point in spawning threads to check from the 2nd, 3rd and 4th
+                     'a''s onward.
+                  */
+                  attachCharBox_wRepeats(prog, &cb, &rpt);
                   addJump(prog, -2);                     // then back to retry or move on.
                   break;
                }
@@ -780,7 +845,8 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                                           '.*def'  vs 'abcdefg'
                      Here the wildcard matches 'abc' and the match starts at 'a', not 'd'.
                   */
-                  if( (prog->instrs.put == 0 && *segStart != '.' && *segStart != '^') ||    // 1st char AND it's not a wildcard or an anchor? OR
+//                  if( (prog->instrs.put == 0 && *segStart != '.' && *segStart != '^') ||    // 1st char AND it's not a wildcard or an anchor? OR
+                  if( (prog->instrs.put == 0 && *segStart != '^') ||    // 1st char AND it's not a wildcard or an anchor? OR
                       (
                         rightOperator(segStart) == '|' &&         // operator to right is alternation? AND...
                         firstOp == '|' &&                         // ... this '|' was not preceded by any different operator? AND

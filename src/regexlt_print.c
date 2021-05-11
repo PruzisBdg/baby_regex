@@ -98,7 +98,7 @@ PRIVATE C8 const * printsEscCh(C8 ch)
 PRIVATE void printAnyRepeats(S_RepeatSpec const *rpts)
 {
    if(rpts != NULL) {
-      if(rpts->valid == TRUE) {
+      if(rpts->cntsValid == TRUE) {
          if(rpts->min == rpts->max && rpts->min > 0)                 // min == max? i.e match exactly  -> {3}
             { dbgPrint(" {%d}", rpts->min); }
          else if(rpts->min > rpts->max)                              // min > max?  -> Illegal!!
@@ -107,6 +107,9 @@ PRIVATE void printAnyRepeats(S_RepeatSpec const *rpts)
             { dbgPrint(" {%d,*}", rpts->min); }
          else
             { dbgPrint(" {%d,%d}", rpts->min, rpts->max); }          // else a range e.g {3,6}
+      }
+      else if(rpts->always == TRUE) {
+         dbgPrint(" {*}", rpts->min);
       }
    }
 }

@@ -150,7 +150,7 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
             {
                ctx->charSeg = FALSE;            // then if we were in a char segment we are out of it now.
 
-               if(ctx->leftCnt >= 2)            // 2 or more open chars?
+               if(ctx->leftCnt >= 2)            // There were 2 or more open chars?
                {
                   ctx->segCnt++;                // the operator takes the proximate, which needs it's own char-segment.
                }
@@ -170,6 +170,11 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
             {
                ctx->inRange = TRUE;             // then parse through that, and...
                ctx->charSeg = FALSE;            // ...if we were in a char segment we are out of it now.
+
+               if(ctx->leftCnt >= 2)            // There were 2 or more open chars?
+               {
+                  ctx->segCnt++;                // the operator takes the proximate, which needs it's own char-segment.
+               }
             }
             else if(isAnchor(ch))
             {

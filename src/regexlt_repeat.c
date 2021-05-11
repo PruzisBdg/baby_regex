@@ -111,11 +111,13 @@ PUBLIC T_ParseRtn regexlt_parseRepeat(S_RepeatSpec *r, C8 const **ch)
 
 Fail:
    r->min = 0; r->max = 0;             // ... so set them both to zero...
-   r->valid = FALSE;
+   r->cntsValid = FALSE;
+   r->always = FALSE;                  // Not '*' or '+'
    return E_Fail;                      // ...and fail.
 
 Success:
-   r->valid = TRUE;
+   r->cntsValid = TRUE;
+   r->always = FALSE;                  // Not '*' or '+'.
    *ch = p+1;                          // We succeeded so 'p' is at closing '}'. Advance source ptr to one-past that.
    return E_Complete;
 }

@@ -73,7 +73,11 @@ typedef U8 T_RepeatCnt;    // Regex repeat counts e.g [Ha ]{3} = 'Ha Ha Ha '
 #define _Repeats_Unlimited MAX_U8   // If the max repeats was left open, i.e '{3,}
 #define _MaxRepeats (_Repeats_Unlimited - 1)
 
-typedef struct {T_RepeatCnt min, max; BOOL valid; } S_RepeatSpec;
+typedef struct {
+   T_RepeatCnt min, max;      // min and max repeats
+   BOOL        cntsValid,     // If TRUE then 'min' and 'max' are valid.
+               always;        // If TRUE, then upper limit only i.e '*' or '+'.
+   } S_RepeatSpec;            // Only one of 'cntsValid' and 'always' may be TRUE;
 
 PUBLIC T_ParseRtn regexlt_parseRepeat(S_RepeatSpec *r, C8 const **ch);
 
@@ -200,6 +204,7 @@ PUBLIC C8 rightOperator(C8 const *rgx);
 // -------- Export for Test Harness
    #if _TARGET_IS == _TARGET_UNITY_TDD
    #endif
+extern U16 tdd_TestNum;    // For labeling error messages.
 
 #endif // REGEXLT_PRIVATE_H
 
