@@ -187,18 +187,22 @@ PRIVATE BOOL isaRepeat(C8 const *rgx)
          : (ch == '?' || ch == '*' || ch == '+');  // Not a range; is it a single char?
 }
 
+// ----------- Advance to ']'.
 PRIVATE C8 const * toClosesClass(C8 const *p)
    { for(; *p != ']' && *p != '\0'; p++) {} return p-1; }
 
+// ----------- Advance to '}'.
 PRIVATE C8 const * toClosesRpt(C8 const *p)
    { for(; *p != '}' && *p != '\0'; p++) {} return p; }
 
-/* ------------------------------------------- gotCharsAtLeast --------------------------------- */
+/* ------------------------------------------- gotAtLeast1Char ---------------------------------
 
-PRIVATE BOOL gotCharsAtLeast(S_CharsBox const *cb)
+   Return TRUE if 'cb' has at least one char.
+*/
+PRIVATE BOOL gotAtLeast1Char(S_CharsBox const *cb)
 {
    return
-      cb->put > 0 ||                               // Already completed a chars-segment? OR
+      cb->put > 0 ||                               // 'put' advanced so, already completed a chars-segment (which must have at least 1 char)? OR
       (
          cb->segs[0].opcode == OpCode_Chars &&     // If 1st segment is a chars-list? AND
          cb->segs[0].payload.chars.len > 0         // we already have at least 1 char in that list? (we should, otherwise it would be OpCode_Null)
@@ -294,7 +298,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                      // First, if this char-class is preceded by a chars-segment AND followed by a repeat-specifier,
                      // then we must close out the current Chars-Box and start a new one for the (repeated)
                      // char-class. This because the repeat binds only the preceding class.
-                     if( gotCharsAtLeast(cb) &&                      // Already got a partial chars-segment or whole segment(s), any type?
+                     if( gotAtLeast1Char(cb) &&                      // Already got a partial chars-segment or whole segment(s), any type?
                          isaRepeat( toClosesClass(*regexStr))+1 )    // ...repeat operator e.g follows this e.g [0-8]{1,4}.
                      {
                         if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
@@ -327,10 +331,11 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                      break;
 
                   case '\\':     // e.g '\d','\w', anything which wasn't captured by translateEscapedWhiteSpace() (above).
-                     // First, if this escaped char-class is preceded by a chars-segment AND followed by a repeat-specifier,
-                     // then we must close out the current Chars-Box and start a new one for the (repeated)
-                     // char-class. This because the repeat binds only the preceding class.
-                     if( gotCharsAtLeast(cb) &&                      // Already got a partial chars-segment or whole segment(s), any type?
+                     /* First, if this escaped char-class is preceded by a chars-segment AND followed by a repeat-specifier,
+                        then we must close out the current Chars-Box and start a new one for the (repeated)
+                        char-class. This because the repeat binds only the preceding class.
+                     */
+                     if( gotAtLeast1Char(cb) &&                      // Already got a partial chars-segment or whole segment(s), any type?
                          isaRepeat( (*regexStr)+2 ))                 // ...repeat operator follows this e.g '\d+'.
                      {                                               // then repeat operator applies just to the escaped \\. Finish the Chars-Box we have so far....
                         if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
@@ -430,19 +435,26 @@ PRIVATE void clearRepeats(S_RepeatSpec *r) {r->min = r->max = 0; r->cntsValid = 
 PRIVATE S_CharsBox const emptyCharsBox =
    {.segs = NULL, .put = 0, .len = 0, .opensGroup = FALSE, .closesGroup = FALSE, .eatUntilMatch = FALSE };
 
+// -------- Room to add another instruction to pre-allocated instruction list.
+PRIVATE BOOL mayAppendInstr(S_Program const *p)
+   { return p->instrs.put < p->instrs.size; }
 
-PRIVATE void addNOP(S_Program *p)
+
+PRIVATE BOOL addNOP(S_Program *p)
 {
-   S_Instr *ins = &p->instrs.buf[p->instrs.put];
-   ins->opcode = OpCode_NOP;
+   if(mayAppendInstr(p)) {
+      S_Instr *ins = &p->instrs.buf[p->instrs.put];
+      ins->opcode = OpCode_NOP;
 
-   ins->charBox = emptyCharsBox;
-   ins->left = 0; ins->right = 0;     // These won't be used but be tidy.
-   clearRepeats(&ins->repeats);
-   p->instrs.put++;
+      ins->charBox = emptyCharsBox;
+      ins->left = 0; ins->right = 0;     // These won't be used but be tidy.
+      clearRepeats(&ins->repeats);
+      p->instrs.put++;
+      return TRUE; }
+   return FALSE;
 }
 
-PRIVATE void addSplitAbs(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbsLeft, T_InstrIdx jmpAbsRight)
+PRIVATE BOOL addSplitAbs(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbsLeft, T_InstrIdx jmpAbsRight)
 {
    S_Instr *ins = &p->instrs.buf[at];
 
@@ -454,37 +466,48 @@ PRIVATE void addSplitAbs(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbsLeft, T_I
 
    if(at == p->instrs.put)
       { p->instrs.put++; }
+   return TRUE;
 }
 
-PRIVATE void addSplit(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
-    { addSplitAbs(p, p->instrs.put, U16plusS16_toU16(p->instrs.put, jmpRelLeft), U16plusS16_toU16(p->instrs.put, jmpRelRight)); }
-
-
-PRIVATE void addSplit_wRepeats(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight, S_RepeatSpec const *r)
+PRIVATE BOOL addSplit(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
 {
-   S_Instr *ins = &p->instrs.buf[p->instrs.put];
-
-   ins->opcode = OpCode_Split;
-   ins->charBox = emptyCharsBox;
-   ins->left  = U16plusS16_toU16(p->instrs.put, jmpRelLeft);
-   ins->right = U16plusS16_toU16(p->instrs.put, jmpRelRight);
-   ins->repeats = *r;
-   p->instrs.put++;
+   if(mayAppendInstr(p)) {
+      return addSplitAbs(p, p->instrs.put, U16plusS16_toU16(p->instrs.put, jmpRelLeft), U16plusS16_toU16(p->instrs.put, jmpRelRight)); }
+   return FALSE;
 }
 
-PRIVATE void addSplit_wMore(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
+
+PRIVATE BOOL addSplit_wRepeats(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight, S_RepeatSpec const *r)
 {
-   S_Instr *ins = &p->instrs.buf[p->instrs.put];
+   if(mayAppendInstr(p)) {
+      S_Instr *ins = &p->instrs.buf[p->instrs.put];
 
-   ins->opcode = OpCode_Split;
-   ins->charBox = emptyCharsBox;
-   ins->left  = U16plusS16_toU16(p->instrs.put, jmpRelLeft);
-   ins->right = U16plusS16_toU16(p->instrs.put, jmpRelRight);
-   ins->repeats = (S_RepeatSpec){.cntsValid = FALSE, .always = TRUE};
-   p->instrs.put++;
+      ins->opcode = OpCode_Split;
+      ins->charBox = emptyCharsBox;
+      ins->left  = U16plusS16_toU16(p->instrs.put, jmpRelLeft);
+      ins->right = U16plusS16_toU16(p->instrs.put, jmpRelRight);
+      ins->repeats = *r;
+      p->instrs.put++;
+      return TRUE; }
+   return FALSE;
 }
 
-PRIVATE void addJumpAbs(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbs)
+PRIVATE BOOL addSplit_wMore(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
+{
+   if(mayAppendInstr(p)) {
+      S_Instr *ins = &p->instrs.buf[p->instrs.put];
+
+      ins->opcode = OpCode_Split;
+      ins->charBox = emptyCharsBox;
+      ins->left  = U16plusS16_toU16(p->instrs.put, jmpRelLeft);
+      ins->right = U16plusS16_toU16(p->instrs.put, jmpRelRight);
+      ins->repeats = (S_RepeatSpec){.cntsValid = FALSE, .always = TRUE};
+      p->instrs.put++;
+      return TRUE; }
+   return FALSE;
+}
+
+PRIVATE BOOL addJumpAbs(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbs)
 {
    S_Instr *ins = &p->instrs.buf[at];
 
@@ -496,21 +519,29 @@ PRIVATE void addJumpAbs(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbs)
 
    if(at == p->instrs.put)
       { p->instrs.put++; }
+   return TRUE;
 }
 
-PRIVATE void addJump(S_Program *p, S16 jmpRel)
-   { addJumpAbs(p, p->instrs.put, U16plusS16_toU16(p->instrs.put,jmpRel)); }
-
-
-PRIVATE void addFinalMatch(S_Program *p)
+PRIVATE BOOL addJump(S_Program *p, S16 jmpRel)
 {
-   S_Instr *ins = &p->instrs.buf[p->instrs.put];
+   if(mayAppendInstr(p))
+      { return addJumpAbs(p, p->instrs.put, U16plusS16_toU16(p->instrs.put,jmpRel)); }
+   return FALSE;
+}
 
-   ins->opcode = OpCode_Match;
-   ins->charBox = emptyCharsBox;
-   ins->left = 0; ins->right = 0;     // These won't be used but be tidy.
-   clearRepeats(&ins->repeats);
-   p->instrs.put++;
+
+PRIVATE BOOL addFinalMatch(S_Program *p)
+{
+   if(mayAppendInstr(p)) {
+      S_Instr *ins = &p->instrs.buf[p->instrs.put];
+
+      ins->opcode = OpCode_Match;
+      ins->charBox = emptyCharsBox;
+      ins->left = 0; ins->right = 0;     // These won't be used but be tidy.
+      clearRepeats(&ins->repeats);
+      p->instrs.put++;
+      return TRUE; }
+   return FALSE;
 }
 
 PRIVATE S16 prevCBox(S_Program *p)
@@ -527,75 +558,62 @@ PRIVATE S16 prevCBox(S_Program *p)
 
    If 'cb' is a non-empty chars-list, then append a 'CharBox instruction to 'p',
    COPY 'cb' into the new instruction. Clear 'cb' (so it won't be re-used).
+
+   Return FALSE if a properly made CBox could not be added to the Program.
 */
 
-PRIVATE void attachCharBox(S_Program *p, S_CharsBox *cb)
+PRIVATE BOOL attachCharBox_wRepeats(S_Program *p, S_CharsBox *cb, S_RepeatSpec const *rpts)
 {
    if(cb != NULL)                                        // 'cb' exists?
    {
       if(cb->len != 0)                                   // 'cb' has content?
       {
-         S_Instr *ins = &p->instrs.buf[p->instrs.put];   // then will make a new instruction at the current 'put'
-
-         ins->opcode = OpCode_CharBox;                   // This instruction is a 'CharBox'.
-         ins->charBox = *cb;                             // and this is the chars-list is contains.
-
-         // Clear branches and repeats; they are not used.
-         ins->left = 0; ins->right = 0;
-         clearRepeats(&ins->repeats);
-
-         // If this CharBox opens or closes a subgroup, then add that attribute to the instruction.
-         if(cb->opensGroup == TRUE)
-            { ins->opensGroup = TRUE; }
-
-         if(cb->closesGroup == TRUE)
-            { ins->closesGroup = TRUE; }
-
-         p->instrs.put++;                                // Advance 'Put' to next instruction
-         p->chars.put += cb->len;                        // Also bump 'put' for the chars-group store to next free.
-
-         cb->len = 0;                                    // Empty 'cb' so it won't be reused by a later attachCharBox().
-      }
-   }
-}
-
-PRIVATE void attachCharBox_wRepeats(S_Program *p, S_CharsBox *cb, S_RepeatSpec const *rpts)
-{
-   if(cb != NULL)                                        // 'cb' exists?
-   {
-      if(cb->len != 0)                                   // 'cb' has content?
-      {
-         S_Instr *ins = &p->instrs.buf[p->instrs.put];   // then will make a new instruction at the current 'put'
-
-         ins->opcode = OpCode_CharBox;                   // This instruction is a 'CharBox'.
-         ins->charBox = *cb;                             // and this is the chars-list is contains.
-
-         // Clear branches and repeats; they are not used.
-         ins->left = 0; ins->right = 0;
-
-         if(rpts == NULL)
-            { clearRepeats(&ins->repeats); }
+         if(mayAppendInstr(p) == FALSE)
+         {
+            return FALSE;
+         }
          else
-            { ins->repeats = *rpts; }
+         {
+            S_Instr *ins = &p->instrs.buf[p->instrs.put];   // then will make a new instruction at the current 'put'
 
-         // If this CharBox opens or closes a subgroup, then add that attribute to the instruction.
-         if(cb->opensGroup == TRUE)
-            { ins->opensGroup = TRUE; }
+            ins->opcode = OpCode_CharBox;                   // This instruction is a 'CharBox'.
+            ins->charBox = *cb;                             // and this is the chars-list is contains.
 
-         if(cb->closesGroup == TRUE)
-            { ins->closesGroup = TRUE; }
+            // Clear branches and repeats; they are not used.
+            ins->left = 0; ins->right = 0;
 
-         p->instrs.put++;                                // Advance 'Put' to next instruction
-         p->chars.put += cb->len;                        // Also bump 'put' for the chars-group store to next free.
+            if(rpts == NULL)
+               { clearRepeats(&ins->repeats); }
+            else
+               { ins->repeats = *rpts; }
 
-         cb->len = 0;                                    // Empty 'cb' so it won't be reused by a later attachCharBox().
+            // If this CharBox opens or closes a subgroup, then add that attribute to the instruction.
+            if(cb->opensGroup == TRUE)
+               { ins->opensGroup = TRUE; }
+
+            if(cb->closesGroup == TRUE)
+               { ins->closesGroup = TRUE; }
+
+            p->instrs.put++;                                // Advance 'Put' to next instruction
+            p->chars.put += cb->len;                        // Also bump 'put' for the chars-group store to next free.
+
+            cb->len = 0;                                    // Empty 'cb' so it won't be reused by a later attachCharBox().
+         }
       }
    }
+   return TRUE;
 }
 
-/* ----------------------------- lookaheadFor_GroupClose ------------------------------------ */
+// -------------------------------------------------------------
+PRIVATE BOOL attachCharBox(S_Program *p, S_CharsBox *cb)
+{
+   return attachCharBox_wRepeats(p, cb, NULL);      // Add 'cb' with no repeat-specifier.
+}
 
+/* ----------------------------- lookaheadFor_GroupClose ------------------------------------
 
+   Mark if the next char from 'rs' closes a Group.
+*/
 PRIVATE S_CharsBox * lookaheadFor_GroupClose(S_CharsBox *cb, C8 const *rs)
 {
    if(*(rs + 1) == ')')
@@ -679,20 +697,22 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                }
                else                                      // else compile is complete
                {
-                  attachCharBox(prog, &cb);              // Attach the last CharBox we made (below)
-                  addFinalMatch(prog);                   // 'Match' terminates the program
-                  return TRUE;                           // Success!
+                  if(!attachCharBox(prog, &cb)) {        // Attach the last CharBox we made (below)
+                     return FALSE; }
+                  return addFinalMatch(prog);            // 'Match' terminates the program. Success! (if there was room to add it).
                }
                break;
 
             case '?':                                 // --- Zero or one
                if( (m = nops_Pop()) != _NotANOP)            // The 'open' for this '?' was back somewhere. We left a NOP, ready to fill
                   { addSplitAbs(prog, m, m+1, prog->instrs.put); }   // so fill that NOP; either try succeeding Chars-Boxes or skip them.
-               else                                         // else the open for this '?' is just the Chars_box we are about to attach.
-                  { addSplit(prog, +1, +2); }               // so either try next or skip it..
+               else {                                       // else the open for this '?' is just the Chars_box we are about to attach.
+                  if(!addSplit(prog, +1, +2)) {             // so either try next or skip it..
+                     return FALSE; }}                       // Couldn't add; Bail!
 
-               attachCharBox(prog,                          // This is 'next'
-                  lookaheadFor_GroupClose(&cb, rgxP));      // If ')' after the '?' then this CharBox is/ends a subgroup. Close the subgroup.
+               if(!attachCharBox(prog,                          // This is 'next'
+                  lookaheadFor_GroupClose(&cb, rgxP))) {    // If ')' after the '?' then this CharBox is/ends a subgroup. Close the subgroup.
+                     return FALSE; }
 
                if(prog->instrs.put == 1 &&                  // The Chars-Box which preceded this '*' (zero-or-) was the 1st? AND
                   prog->instrs.buf[0].charBox.eatUntilMatch == TRUE)  // that CBox was an 'eatUntilMatch'?
@@ -701,10 +721,12 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                break;
 
             case '*':                                 // --- Zero or more
-               if(cb.len == 0)                              // No CBox to add? (was closed out by a preceding group)
-                  { addSplit_wMore(prog, +1, +2); }         // Either try next JMP or skip it
+               if(cb.len == 0) {                            // No CBox to add? (was closed out by a preceding group)
+                  if(!addSplit_wMore(prog, +1, +2)) {       // Either try next JMP or skip it
+                     return FALSE; }}                       // Couldn't add; Bail!
                else {                                       // else there is a CBox
-                  addSplit_wMore(prog, +1, +3);             // Either try that CBox repeatedly or skip past the JMP which is beyond it
+                  if(!addSplit_wMore(prog, +1, +3)) {       // Either try that CBox repeatedly or skip past the JMP which is beyond it
+                     return FALSE; }                        // Couldn't add; Bail!
 
                   /* Attach the CBox, but also set the repeat-specifier to 'always' = '*', same as in the preceding
                      Split. When executing the compiled regex (regexlt_run.c/runOnce()) if the CBox has no
@@ -713,11 +735,13 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                      at the 1st 'a'; there's no point in spawning threads to check from the 2nd, 3rd and 4th
                      'a''s onward.
                   */
-                  attachCharBox_wRepeats(prog,
+                  if(!attachCharBox_wRepeats(prog,
                      lookaheadFor_GroupClose(&cb, rgxP),    // If ')' after the '*' then close current subgroup at the CharBox.
-                     &(S_RepeatSpec){.always = TRUE} ); }   // Say this CBox has no repeat-limit i.e 'a*'.
+                     &(S_RepeatSpec){.always = TRUE} )) {   // Say this CBox has no repeat-limit i.e 'a*'.
+                        return FALSE; }}
 
-               addJump(prog, MinS16(-2, prevCBox(prog)));   // then JMP back to retry the previous CBox (but not the one we added, which is '-1')
+               if(!addJump(prog, MinS16(-2, prevCBox(prog)))) {   // then JMP back to retry the previous CBox (but not the one we added, which is '-1')
+                  return FALSE; }                           // Couldn't add; Bail!
 
                if(prog->instrs.put == 1 &&                  // The Chars-Box which preceded this '*' (zero-or-) was the 1st? AND
                   prog->instrs.buf[0].charBox.eatUntilMatch == TRUE)  // that 1st CBox was an 'eatUntilMatch'?
@@ -726,35 +750,38 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                break;
 
             case '+':                                 // --- One or more
-               attachCharBox(prog,                       // Always try this once...
-                  lookaheadFor_GroupClose(&cb, rgxP));   // If ')' after the '+' then close current subgroup at the CharBox.
-               addSplit(prog, -1, +1);                   // then either move on or retry.
+               attachCharBox(prog,                          // Always try this once...
+                  lookaheadFor_GroupClose(&cb, rgxP));      // If ')' after the '+' then close current subgroup at the CharBox.
+               addSplit(prog, -1, +1);                      // then either move on or retry.
                rgxP++;
                break;
 
             case '|':                                 // --- Alternates
-               if( (m = nops_Pop()) != _NotANOP)         // The 'open' for the right of this '|' was back somewhere. We left a NOP, ready to fill
+               if( (m = nops_Pop()) != _NotANOP)            // The 'open' for the right of this '|' was back somewhere. We left a NOP, ready to fill
                   { addSplitAbs(prog, m, m+1, prog->instrs.put+2); } // so fill that NOP; either try succeeding Chars-Boxes or skip them.
-               else
-                  { addSplit(prog, +1, +3); }            // Split the execution path; fork-left is next; fork-right is after Jmp.
+               else {
+                  if(!addSplit(prog, +1, +3)) {             // Split the execution path; fork-left is next; fork-right is after Jmp.
+                     return FALSE; }}                       // Couldn't add; Bail!
 
-               attachCharBox(prog, &cb);                 // Attach fork-left ... which we parsed before reaching '|'. Goto next free bytecode slot.
-               forked = TRUE;                            // Mark that we forked; so we know when we finally get code-right.
-               boxesToRight = 0;                         // Will count CharBoxes to right of '|' which are arguments or that '|'. So can JMP past them.
-               rgxP++;                                   // Goto next char past '|'.
+               if(!attachCharBox(prog, &cb)) {              // Attach fork-left ... which we parsed before reaching '|'. Goto next free bytecode slot.
+                  return FALSE; }
+               forked = TRUE;                               // Mark that we forked; so we know when we finally get code-right.
+               boxesToRight = 0;                            // Will count CharBoxes to right of '|' which are arguments or that '|'. So can JMP past them.
+               rgxP++;                                      // Goto next char past '|'.
                break;
 
             case '{':                                 // --- Opens a repeat specifier e.g {2,5} (match preceding 2 to 5 times}
                /* (Attempt to) parse a repeat-specifier into 'rpt'. If success, then 'rgxP' advances
                   to after the closing '}'.
                */
-               if(parseRepeat(&rpt, &rgxP) == E_Fail)    // Was not any of e.g {3}, {3,} or {3,5}?
+               if(parseRepeat(&rpt, &rgxP) == E_Fail)       // Was not any of e.g {3}, {3,} or {3,5}?
                {
-                  return FALSE;                          // then regex is malformed.
+                  return FALSE;                             // then regex is malformed.
                }
-               else                                      // else got a repeat specifier intp 'rpt'
+               else                                         // else got a repeat specifier intp 'rpt'
                {
-                  addSplit_wRepeats(prog, +1, +3, &rpt); // Write a 'Split' ('zero-or-more') with 'rpt' attached.
+                  if(!addSplit_wRepeats(prog, +1, +3, &rpt)) { // Write a 'Split' ('zero-or-more') with 'rpt' attached.
+                     return FALSE; }                        // Couldn't add; Bail!
 
                   // If e.g '(ab{3,5})' then the ')' closes the group which started at the preceding CBox.
                   if(*rgxP == ')')
@@ -767,14 +794,16 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                      at the 1st 'a' and there's no point in spawning threads to check from the 2nd, 3rd and 4th
                      'a''s onward.
                   */
-                  attachCharBox_wRepeats(prog, &cb, &rpt);
-                  addJump(prog, -2);                     // then back to retry or move on.
+                  if(!attachCharBox_wRepeats(prog, &cb, &rpt)) {
+                     return FALSE; }
+                  if(!addJump(prog, -2)) {                  // then back to retry or move on.
+                     return FALSE; }
                   break;
                }
 
             case ')':                                 // --- Closing a subgroup (after an operator, since it wasn't captured by fillCharBox(), below)
-               rgxP++;                                   // then the ')' is superfluous, since the preceding operator implicitly closed the subgroup
-               break;                                    // So just boof past the ')'.
+               rgxP++;                                      // then the ')' is superfluous, since the preceding operator implicitly closed the subgroup
+               break;                                       // So just boof past the ')'.
 
             default:                                  // --- (else) a regex literal char
 
@@ -786,17 +815,18 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                   escapes and classes and assemble them into a chars-group. This leaves us at the next non-char
                   which will be handled by one of the cases above.
                */
-               if(gotCharBox)                            // But but, if this follows a chars-list which closes a subgroup?
+               if(gotCharBox)                               // But but, if this follows a chars-list which closes a subgroup?
                {
                   gotCharBox = FALSE;
-                  attachCharBox(prog, &cb);              // then load that chars-list before assembling the next.
+                  if(!attachCharBox(prog, &cb)) {           // then load that chars-list before assembling the next.
+                     return FALSE; }
                }
 
-               cb = emptyCharsBox;                       // Make a new S_CharsBox for fillCharBox() to fill.
+               cb = emptyCharsBox;                          // Make a new S_CharsBox for fillCharBox() to fill.
                cb.segs = &prog->chars.buf[prog->chars.put];  // Give it the next free space from what was malloced for S_CharsBox[]
                cb.bufSize = prog->chars.size - prog->chars.put;
 
-               segStart = rgxP;                          // Mark start of this segment; we will
+               segStart = rgxP;                             // Mark start of this segment; we will
 
                /* If next chars segment starts a group? '(' then it may be this first of multiple
                   Chars-Boxes spanning multiple clauses. If the right-operator is '|' or '?' then
@@ -804,25 +834,26 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                   we reach the close ')' for this open. Then we can fill the Split to execute or bypass
                   everything between the '(' and the ')'.
                */
-               if(*rgxP == '(')                          // Next chars segment starts a group? ... which may have multiple sub-clauses.
-               {                                         // If next operator is '|' or '?' then we must leave a placegolder for a 'Split'...
+               if(*rgxP == '(')                                // Next chars segment starts a group? ... which may have multiple sub-clauses.
+               {                                               // If next operator is '|' or '?' then we must leave a placegolder for a 'Split'...
                   C8 ch = rightOperator(rgxP);
                   if(ch == '|' || ch == '?')                   // Next operator (somewhere to the right) is '|' or '?'?
                   {
                      if(nops_Push(prog->instrs.put) == FALSE)  // then push a mark for this this spot.
                         { return FALSE; }                      // Couldn't push? Fail.
                      else
-                        { addNOP(prog); }                      // and reserve a slot ofter the 'SPlit' which be inserted when we reach the '|'.
+                        { if(!addNOP(prog)) {                  // and reserve a slot ofter the 'SPlit' which be inserted when we reach the '|'.
+                           return FALSE; }}
                   }
                }
 
                if( fillCharBox(&prog->classes, &cb, &rgxP) == FALSE)   // Got (contiguous) chars into 'cb'?
                {
-                  return FALSE;                          // No, parse error.. Fail
+                  return FALSE;                                // No, parse error.. Fail
                }
-               else                                      // else 'cb' has the chars (and 'rs' is advanced to next un-read input)
+               else                                            // else 'cb' has the chars (and 'rs' is advanced to next un-read input)
                {
-                  gotCharBox = TRUE;                     // Mark that there's an assembled Box.
+                  gotCharBox = TRUE;                           // Mark that there's an assembled Box.
 
                   if(firstOp == 0)                             // Didn't already get the 1st right operator?
                      { firstOp = rightOperator(segStart); }    // then find it now.
@@ -845,8 +876,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                                           '.*def'  vs 'abcdefg'
                      Here the wildcard matches 'abc' and the match starts at 'a', not 'd'.
                   */
-//                  if( (prog->instrs.put == 0 && *segStart != '.' && *segStart != '^') ||    // 1st char AND it's not a wildcard or an anchor? OR
-                  if( (prog->instrs.put == 0 && *segStart != '^') ||    // 1st char AND it's not a wildcard or an anchor? OR
+                  if( (prog->instrs.put == 0 && *segStart != '^') ||    // 1st char AND it's not an anchor? OR
                       (
                         rightOperator(segStart) == '|' &&         // operator to right is alternation? AND...
                         firstOp == '|' &&                         // ... this '|' was not preceded by any different operator? AND
@@ -864,7 +894,8 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                            { cb.eatUntilMatch = TRUE; }           // then eat leading mismatches for this box.
 
                         rightFork = prog->instrs.put;             // Mark the where we forked...
-                        addNOP(prog);                             // and reserve a slot for the JMP. To be inserted later when we figure how far right the '|' extends.
+                        if(!addNOP(prog)) {                       // and reserve a slot for the JMP. To be inserted later when we figure how far right the '|' extends.
+                           return FALSE; }                        // Couldn't add; Bail!
                      }
 
                      if( rightOperator(segStart) == '$' )         // Right fork extends to end of input string?
@@ -890,12 +921,14 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                         if(nops_Push(prog->instrs.put) == FALSE)  // then push a mark for this this spot.
                            { return FALSE; }                      // Couldn't push? Fail.
                         else
-                           { addNOP(prog); }                      // and reserve a slot ofter the 'SPlit' which be inserted when we reach the '|'.
+                           { if(!addNOP(prog)) {                  // and reserve a slot ofter the 'SPlit' which be inserted when we reach the '|'.
+                              return FALSE; }}                    // Couldn't add; Bail!
                      }
                   }
 
-                  if(*rgxP == '(')                                // Next char opens a new subgroup?
-                     { attachCharBox(prog, &cb); }                // then attach the existing newly-made chars-list now; don't have to wait for a post-operator.
+                  if(*rgxP == '(') {                              // Next char opens a new subgroup?
+                     if(!attachCharBox(prog, &cb)) {            // then attach the existing newly-made chars-list now; don't have to wait for a post-operator.
+                        return FALSE; }}
                   break;
                }
          }

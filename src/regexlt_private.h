@@ -34,11 +34,11 @@ typedef struct {
          uneatenSubGrp,// A preceding group has not yet been consumed by an operator.
          esc;        // Preceding char was '\'
 
-   U8    classCnt,   // Numbers of character class definitions so far
-         segCnt,     // Character segments so far
-         leftCnt,    // 'free' 'left' chars pending an operator. Any operator will bind the last char only.
-         escCnt,     // Number of chars escaped OUTSIDE A CHAR CLASS.
-         operators,
+   U8    classCnt,      // Numbers of character class definitions so far
+         charSegs,      // Character segments so far
+         leftCnt,       // 'free' 'left' chars pending an operator. Any operator will bind the last char only.
+         escCnt,        // Number of chars escaped OUTSIDE A CHAR CLASS.
+         repeats,       // '?', '+', '*' or '{n,n}. '*' and '{}' compile to a Split+Jmp, and so are counted twice.
          subExprs;
 } S_CntRegexParts;
 

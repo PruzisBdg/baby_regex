@@ -423,4 +423,40 @@ void test_Finds(void)
    }
 }
 
+
+/* -------------------------------- test_IPAddr -------------------------------------------- */
+
+void test_IPAddr(void)
+{
+   S_Test const tests[] = {
+      // Regex            Test string        Result code           Matches (if any)
+      //                                                      {how_many [start, len]..}
+      // ----------------------------------------------------------------------------
+      { "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",        "0.0.0.0",           E_RegexRtn_Match,    {1, {{0,7}}}},
+   };
+
+   RegexLT_S_Cfg cfg = {
+      .getMem        = getMemCleared,
+      .free          = myFree,
+      .printEnable   = _TRACE_PRINTS_ON,
+      .maxSubmatches = 9,
+      .maxRegexLen   = MAX_U8,
+      .maxStrLen     = MAX_U8 };
+
+   RegexLT_Init(&cfg);
+
+   U8 c, fails;
+   for(c = 0, fails = 0; c < RECORDS_IN(tests); c++)
+   {
+      tdd_TestNum = c;
+      if( runOneTest_PrintOneLine(c, &tests[c], _PrintFailsOnly) == FALSE)
+         { fails++; }
+   }
+   if(fails > 0)
+   {
+      printf("\r\n------- %d Fail(s) --------\r\n", fails);
+      TEST_FAIL();
+   }
+}
+
 // ----------------------------------------- eof --------------------------------------------

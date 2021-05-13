@@ -21,7 +21,7 @@ extern void test_Finds(void);
 
 int main()
 {
-   test_Finds();
+   test_IPAddr();
    return 1;
 }
 

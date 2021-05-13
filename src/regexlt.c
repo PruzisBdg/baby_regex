@@ -162,7 +162,7 @@ PUBLIC T_RegexRtn RegexLT_Compile(C8 const *regexStr, void **progV)
             else                                            // otherwise have malloc()ed for program we will now compile.
             {
                /* Fill in the sizes of the as-yet empty 'leaves' we malloced for 'prog'. If we pre-scanned correctly
-                  the leaves should be enoigh for the compiled program. But in case not, these are hard fill-limits
+                  the leaves should be enough for the compiled program. But in case not, these are hard fill-limits
                   for the compiler.
                */
                prog->classes.size = stats.classes;

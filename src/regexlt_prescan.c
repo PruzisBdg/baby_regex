@@ -70,7 +70,7 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
       if(ch == '}')                             // Now got a closing '}'
       {
          ctx->inRange = FALSE;                  // not on a '{n,n}' any more.
-         ctx->operators++;                      // Count this range specifier as an operator, same as '*', '?' etc.
+         ctx->repeats += 2;                   // Count {} as an operator. Like '*' it makes Split+Jmp, so +2.
          ctx->uneatenSubGrp = FALSE;            // If there was a preceding subgroup(s) we have consumed (them) now.
       }
       else if( !isRangeContents(ch))            // Wasn't a number. space or ','?
@@ -126,7 +126,7 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
                if(ctx->charSeg)                 // Opened this group inside a char segment? ...we have left that segment now
                {
                   ctx->charSeg = FALSE;         // then we have left it now...
-                  ctx->segCnt++;                // and we have one more chars segment.
+                  ctx->charSegs++;                // and we have one more chars segment.
                   ctx->leftCnt = 0;             // Closed out a segment, so reset the count of free-left chars
                }
             }
@@ -152,9 +152,9 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
 
                if(ctx->leftCnt >= 2)            // There were 2 or more open chars?
                {
-                  ctx->segCnt++;                // the operator takes the proximate, which needs it's own char-segment.
+                  ctx->charSegs++;                // the operator takes the proximate, which needs it's own char-segment.
                }
-               ctx->operators++;                // and count this operator.
+               ctx->repeats += (ch == '*' ? 2 : 1);  // and count this operator; '*' adds Split+Jmp so +2 for that.
                ctx->leftCnt = 0;                // Reset count of free-left chars.
 
                /* '|' is right-associative. If there's a subgroup ahead of '|' compiler reserves
@@ -162,7 +162,7 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
                   '|'.
                */
                if(ch == '|' && ctx->uneatenSubGrp == TRUE)
-                  { ctx->segCnt++; }            // and we have one more chars segment.
+                  { ctx->charSegs++; }            // and we have one more chars segment.
 
                ctx->uneatenSubGrp = FALSE;      // If there was a preceding subgroup(s) we have consumed (them) now.
             }
@@ -173,13 +173,13 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
 
                if(ctx->leftCnt >= 2)            // There were 2 or more open chars?
                {
-                  ctx->segCnt++;                // the operator takes the proximate, which needs it's own char-segment.
+                  ctx->charSegs++;                // the operator takes the proximate, which needs it's own char-segment.
                }
             }
             else if(isAnchor(ch))
             {
                ctx->charSeg = FALSE;
-               ctx->segCnt++;
+               ctx->charSegs++;
                ctx->leftCnt = 0;
             }
             else                                // else a regular char
@@ -189,7 +189,7 @@ PRIVATE T_RegexParts_Rtn countRegexParts(S_CntRegexParts *ctx, C8 ch)
                if(ctx->charSeg == FALSE)        // Not marked as in a char segment.
                {
                   ctx->charSeg = TRUE;          // then we are now.
-                  ctx->segCnt++;                // and bump the char segment count.
+                  ctx->charSegs++;                // and bump the char segment count.
                }
             }
          }           // else some other char.
@@ -230,7 +230,7 @@ PUBLIC S_RegexStats regexlt_prescan(C8 const *regex)
 
    S_CntRegexParts ctx = {
       .inClass = FALSE, .inRange = FALSE, .charSeg = FALSE, .esc = FALSE,
-      .classCnt = 0, .segCnt = 0, .leftCnt = 0, .escCnt = 0, .operators = 0,
+      .classCnt = 0, .charSegs = 0, .leftCnt = 0, .escCnt = 0, .repeats = 0,
       .subExprs = 1 };                                            // There's always at least one sub-expression, which is the whole regex.
 
    S_RegexStats s = {.len=0, .charboxes=0, .instructions=0, .classes = 0, .subExprs = 0, .legal=FALSE};
@@ -241,11 +241,14 @@ PUBLIC S_RegexStats regexlt_prescan(C8 const *regex)
       {
          s.legal = TRUE;                                          // then regex is (probably) legal
 
-         // Each segment uses an instruction slot. Operators use either 1 or 2 (additional) slots.
-         s.instructions = (2*ctx.operators) + ctx.segCnt + 1 + 5;
+         /* Each segment uses an instruction slot. '?', '+', '*'m and '{n,n}' use 1 or 2 slots, which are
+            counted in 'repeats'. There's a Match at the end (+1). Add 2 more for a cushion.
+
+         */
+         s.instructions = ctx.repeats + ctx.escCnt + ctx.classCnt + ctx.charSegs + 1 + 2;
          s.classes = ctx.classCnt;
          // Each char-list, char-class and escaped char uses a seqment (i.e S_CharBox).
-         s.charboxes = ctx.classCnt + ctx.escCnt + ctx.segCnt + (2 * ctx.operators) + 1;
+         s.charboxes = ctx.classCnt + ctx.escCnt + ctx.charSegs + (2 * ctx.repeats) + 1;
          s.subExprs = ctx.subExprs;
          break;
       }
@@ -263,7 +266,7 @@ PUBLIC S_RegexStats regexlt_prescan(C8 const *regex)
       dbgPrint("\r\n------- Prescan:\r\n"
                "   len = %d   operators %d classes %d escapes %d charSegs %d subExprs %d\r\n"
                "      ->  %d chars slots & %d instruction slots & %d classes\r\n\r\n",
-         s.len, ctx.operators, ctx.classCnt, ctx.escCnt, ctx.segCnt, ctx.subExprs,
+         s.len, ctx.repeats, ctx.classCnt, ctx.escCnt, ctx.charSegs, ctx.subExprs,
             s.charboxes, s.instructions, s.classes);
 
    return s;
