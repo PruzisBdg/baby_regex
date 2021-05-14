@@ -222,7 +222,8 @@ typedef struct {
    S_MatchList matches;         // Matches which this thread has found - so far.
    BOOL        eatMismatches;   // Eat (leading) mismatches), at the start of the regex
                                 // Flag is defeated at the 1st match in a thread. Avoids thread blowup with 'A+..' which is implicitly '.*A+...' and just explodes.
-   T_CaseRule  caseRule;        // Match case; ignore case etc
+   T_CaseRule  caseRule;        // Match case; ignore case etc.
+   BOOL        deleted;       // If FALSE then this Thread was a duplicate. It and it's matches were merged into another Thread.
 } S_Thread;
 
 #define _EatMismatches   TRUE
@@ -253,7 +254,7 @@ PRIVATE void addMatchSub(S_Thread *t, C8 const *inStr, C8 const *start, C8 const
          S_Match *m = &t->matches.ms[0];                                // 1st match is the global.
          if(startIdx < m->start) {                                      // This new match starts earlier than the global on the list?
             m->start = startIdx; m->len = len;                          // then the new match replaces the existing one.
-                             dbgPrint("Add lead  m[0]<-[%d %d] @ %d\r\n", m->start, m->len, t->matches.latestPC); }
+                             dbgPrint("Add lead  m[0]<-@(%d %d) (%d:)\r\n", m->start, m->len, t->matches.latestPC); }
          t->matches.latestPC = t->pc;
          if(t->matches.put == 0)
             { t->matches.put = 1; }
@@ -279,16 +280,17 @@ PRIVATE void addMatchSub(S_Thread *t, C8 const *inStr, C8 const *start, C8 const
             S_Match *m = &t->matches.ms[t->matches.put];                // then add new match.
             m->start = startIdx; m->len = len;
             t->matches.latestPC = t->pc;
-                              dbgPrint("      --- AddM m[%d]<-(%d %d) @ %d\r\n", t->matches.put, m->start, m->len, t->matches.latestPC);
-            t->matches.put++; }                                         // and we have one more (match)
+                              dbgPrint("      --- AddM m[%d]<-@(%d %d) (%d:)\r\n", t->matches.put, m->start, m->len, t->matches.latestPC);
+            t->matches.put++;
+            }                                         // and we have one more (match)
          else {                                                         // else not adding a new match
             if(dup == TRUE) {                                           // Extending existing match?
                t->matches.ms[t->matches.put-1].len = len;               // Just replace existing length with new.
-                              dbgPrint("\r\n DupM m[%d] (%d,%d)->(%d,%d) @%d \r\n",
+                              dbgPrint("\r\n DupM m[%d] @(%d,%d)->@(%d,%d) (%d:) \r\n",
                                   t->matches.put-1, startIdx,  t->matches.ms[t->matches.put-1].len, startIdx, len, t->matches.latestPC );
             }
             else
-               { dbgPrint("\r\n -------------- No room for match (%d,%d) capacity = %d\r\n", start-inStr, end-start, t->matches.bufSize);  }
+               { dbgPrint("\r\n -------------- No room for match @(%d,%d) capacity = %d\r\n", start-inStr, end-start, t->matches.bufSize);  }
          }
       }
    }
@@ -310,7 +312,7 @@ PRIVATE S_ThreadList * threadList(T_ThrdListIdx len)
    S_ThreadList *lst;
 
    S_TryMalloc toMalloc[] = {
-      { (void**)&thrd, (size_t)len * sizeof(S_Thread)    },       // All these threads...
+      { (void**)&thrd, (size_t)len * (sizeof(S_Thread)+2)    },       // All these threads...
       { (void**)&lst, 1            * sizeof(S_ThreadList) }};     // ...held in 1 list.
 
    if( getMemMultiple(toMalloc, RECORDS_IN(toMalloc)) == FALSE)
@@ -363,50 +365,47 @@ typedef struct {
    'src' is the current read of the input string. 'groupStart' and 'rpts' are copied from the
    thread which spawned this one.
 */
-PRIVATE S_Thread *newThread(T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 const *groupStart, T_InstrIdx subStartIdx, S_ThrdMatchCfg const *mcf, BOOL eatMismatches, T_CaseRule caseRule)
+PRIVATE S_Thread *newThread(S_Thread *t, T_InstrIdx pc, C8 const *src, T_RepeatCnt rpts, C8 const *groupStart, T_InstrIdx subStartIdx, S_ThrdMatchCfg const *mcf, BOOL eatMismatches, T_CaseRule caseRule)
 {
-   static S_Thread t;
-
-   t.pc = pc;                          // Program counter
-   t.sp = src;                         // input string read at...
-   t.rptCnt = rpts;                    // Repeats of this thread so far.
-   t.subgroupStart = groupStart;       // If this thread starts a sub-group.
-   t.lastOpensSub = subStartIdx;
-   t.eatMismatches = eatMismatches;    // if this thread eats leading mismatches.
-   t.caseRule = caseRule;
+   t->pc = pc;                          // Program counter
+   t->sp = src;                         // input string read at...
+   t->rptCnt = rpts;                    // Repeats of this thread so far.
+   t->subgroupStart = groupStart;       // If this thread starts a sub-group.
+   t->lastOpensSub = subStartIdx;
+   t->eatMismatches = eatMismatches;    // if this thread eats leading mismatches.
+   t->caseRule = caseRule;
+   t->deleted = FALSE;
 
    if(mcf->lst == NULL)                                                                // No existing matches to clone or reference?
    {
-      t.matches.put = 0;                                                               // then match list for this thread starts empty
-      t.matches.latestPC = _Max_T_InstrIdx;                                            // this is 'no instruction'.
+      t->matches.put = 0;                                                              // then match list for this thread starts empty
+      t->matches.latestPC = _Max_T_InstrIdx;                                           // this is 'no instruction'.
 
       // Malloc() 'newBufSize' slots for this match-list
-      if( (t.matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) == NULL)      // Couldn't malloc for matches?
-         { t.matches.bufSize = 0; }                                                    // then say there's space for none.
+      if( (t->matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) == NULL)     // Couldn't malloc for matches?
+         { t->matches.bufSize = 0; }                                                   // then say there's space for none.
       else
-         { t.matches.bufSize = mcf->newBufSize; }                                      // else malloc success; we can hold these many matches.
-      t.matches.isOwner = TRUE;                                                        // Either way; we own the space/non-space for these matches.
+         { t->matches.bufSize = mcf->newBufSize; }                                     // else malloc success; we can hold these many matches.
+      t->matches.isOwner = TRUE;                                                       // Either way; we own the space/non-space for these matches.
    }
    else                                                                                // else there's and existing match list to clone or reference.
    {
-      t.matches = *(mcf->lst);                                                         // Copy the 'shell' of the match list.
-
+      t->matches = *(mcf->lst);                                                        // Copy the 'shell' of the match list.
       if(mcf->clone) {                                                                 // Are we cloning the match-list?, not just referencing the matches.
-                                                                                       // then malloc() 'newBufSize'  fresh slots
-         if( (t.matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) == NULL)   // Could not malloc for the matches we must clone?
-            { t.matches.bufSize = 0; }                                                 // then we got a zero-sized match list
+         if( (t->matches.ms = br->getMem(mcf->newBufSize * sizeof(S_Match))) == NULL)  // Could not malloc for the matches we must clone?
+            { t->matches.bufSize = 0; }                                                // then we got a zero-sized match list
          else {
-            t.matches.bufSize = mcf->newBufSize;                                       // else malloc success; can hold this many matches.
-            t.matches.isOwner = TRUE;                                                  // which we will clone, so we own them.
+            t->matches.bufSize = mcf->newBufSize;                                      // else malloc success; can hold this many matches.
+            t->matches.isOwner = TRUE;                                                 // which we will clone, so we own them.
 
             if(mcf->lst->put > 0) {                                                    // There are matches in the existing list?
-               memcpy(t.matches.ms, mcf->lst->ms, mcf->lst->put * sizeof(S_Match)); }} // then copy them into the new list we just made.
+               memcpy(t->matches.ms, mcf->lst->ms, mcf->lst->put * sizeof(S_Match)); }} // then copy them into the new list we just made.
          }
       else {
-         t.matches.isOwner = FALSE;
+         t->matches.isOwner = FALSE;
       }
    }
-   return &t;
+   return t;
 }
 
 /* ------------------------------------------ clearThreadList ------------------------------------------ */
@@ -529,24 +528,24 @@ PRIVATE C8 const * prntRpts( S_RepeatSpec const *r, T_RepeatCnt cnt )
 
 /* ----------------------------------- sprntMatches --------------------------------------- */
 
-PRIVATE void sprntMatches(C8 *buf, S_MatchList const *ml)
+PRIVATE C8 const * sprntMatches(C8 *out, S_MatchList const *ml)
 {
    C8 b1[10];
-   buf[0] = '\0';
+   out[0] = '\0';
    for(U8 c = 0; c < ml->put; c++)
    {
-      sprintf(b1, "[%d %d] ", ml->ms[c].start, ml->ms[c].len);
-      strcat(buf, b1);
+      sprintf(b1, "(%d %d)", ml->ms[c].start, ml->ms[c].len);
+      strcat(out, b1);
    }
+   return out;
 }
 
 /* ----------------------------------- sprntThread --------------------------------------- */
 
-PRIVATE void sprntThread(C8 *buf, S_Thread const *t)
+PRIVATE C8 const * sprntThread(C8 *out, T_ThrdListIdx ti, S_Thread const *t)
 {
-   C8 b1[50];
-   sprntMatches(b1, &t->matches);
-   sprintf(buf, "eat %d %s ",  t->eatMismatches, b1);
+   sprintf(out, "%u(%u:) M%s", ti, t->pc, sprntMatches((C8[50]){}, &t->matches));
+   return out;
 }
 
 /* --------------------------------- threadsEquivalent ------------------------------------
@@ -557,6 +556,8 @@ PRIVATE void sprntThread(C8 *buf, S_Thread const *t)
 PRIVATE BOOL threadsEquivalent(S_Thread const *a, S_Thread const *b)
 {
    return
+      a->deleted == FALSE &&
+      b->deleted == FALSE &&
       a->pc == b->pc &&
       a->rptCnt == b->rptCnt;
 }
@@ -596,26 +597,67 @@ PRIVATE void mergeMatches(S_MatchList *to, S_MatchList const *from)
    } // for each match in from[]
 }
 
-/* ------------------------------------ foundDuplicate ------------------------------------
-
-    Return TRUE if there's an (earlier) duplicate of thread [ti] in 'thread-list 'tl'. A duplicate
-    is a thread at the same instruction and with the same repeat-count as 'ti'.
-
-    Duplicate threads can happen with regex which have explosive quantifiers. A duplicate means
-    that the two threads have reached the same place by two different routes. There's no point
-    in propagating both; they will take the same same path.
-*/
-PRIVATE BOOL foundEarlierDuplicate(S_ThreadList *tl, T_ThrdListIdx ti)
+// -----------------------------------------------------------------------------------------------
+PRIVATE C8 const * prntInstr(C8 *out, S_Instr const *ip)
 {
-   if(ti > 0) {                                                      // At least one earlier thread in 'tl'?
-      for(U8 c = ti; c; c--) {                                       // From the latest thread (-1) to the 1st
-         if( threadsEquivalent(&tl->ts[ti], &tl->ts[c-1]) ) {        // This earlier thread is equivalent to the latest?
-            mergeMatches(&tl->ts[c-1].matches, &tl->ts[ti].matches);
-            C8 b1[100]; C8 b2[100];
-            sprntThread(b1, &tl->ts[ti]);
-            sprntThread(b2, &tl->ts[c-1]);
-            dbgPrint("-------Duplicate found: rpts %d: [%d] %s [%d] %s\r\n", tl->ts[ti].rptCnt, ti, b1, c-1, b2);
-            return TRUE; }}}                                         // then TRUE.
+   // For 'Split' and 'Jmp' append destinations. For other opcodes just print the opcode.
+   if(ip->opcode == OpCode_Jmp) {
+      sprintf(out, "jmp: %u", ip->left); }
+   else if(ip->opcode == OpCode_Split) {
+      sprintf(out, "split(%u,%u)", ip->left, ip->right); }
+   else {
+      strcpy(out, opcodeNames(ip->opcode)); }
+   return out;
+}
+
+/* ------------------------------------ removeDuplicateThreads ------------------------------------
+
+    Remove duplicate Threads in 'tl', folding the matches in the into the Thread(s) that are
+    retained.  Duplicate Threads at are ones with the same instruction and with the same
+    repeat-count.
+
+    Duplicate threads can happen with regex which have explosive quantifiers. The two threads
+    have reached the same place by two different routes. There's no point in propagating both;
+    they will take the same same path.
+
+    removeDuplicateThreads() folds later (higher-index) threads into earlier (lower-index)
+    ones.
+
+    Return FALSE if the list did not have at least 2 Thread (and hence could not have duplicates)
+*/
+PRIVATE BOOL removeDuplicateThreads(S_ThreadList *tl, S_InstrList const *instr)
+{
+   if(tl->put >= 2) {                                             // At least 2 Threads in 'tl'?
+      BOOL prntedHdr = FALSE;
+
+      for(U8 _from = tl->put-1; _from > 1; _from--) {             // From the last Thread to the 2nd....
+         for(U8 _to = _from-1; _to; _to--) {                      // For each Thread preceding...
+            S_Thread *from = &tl->ts[_from];
+            S_Thread *to = &tl->ts[_to];
+
+            if( threadsEquivalent(from, to) ) {                   // Later Thread is equivalent to earlier? ...
+
+               if(prntedHdr == FALSE) {
+                  dbgPrint("   ---- Found duplicates: Remove later (higher-indexed) one. ----\r\n");
+                  prntedHdr = TRUE; }
+
+               S_Instr *ip = &instr->buf[from->pc];
+
+               dbgPrint("   %u(%u:) %s %s %s duplicates %s {n,n}n  --> ",
+                           _from, from->pc,
+                           prntInstr((C8[30]){}, ip),
+                           sprntMatches((C8[50]){}, &from->matches),
+                           prntRpts(&ip->repeats, from->rptCnt),
+                           sprntThread((C8[100]){}, _to, to));
+
+               mergeMatches(&to->matches, &from->matches);        // ...then merge matches from later in earlier.
+               from->deleted = TRUE;                              // and mark later as deleted.
+
+               dbgPrint("Merged: %s\r\n",  sprntThread((C8[100]){}, _to, to)); }}}
+
+      if(prntedHdr == TRUE) {
+         dbgPrint("\r\n"); }
+      return TRUE; }
    return FALSE;                    // else no equivalent found -> FALSE.
 }
 
@@ -658,7 +700,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
    // Make the 1st thread in and put the 1st opcode in it. Attach the start of the input string.
    addThread(curr,                     // to the current thread list
-      newThread(  0,                   // PC starts at zero
+      newThread(  &(S_Thread){},
+                  0,                   // PC starts at zero
                   str,                 // From start of the input string
                   0,                   // Loop/repeat count starts at 0. WIll increment if JMP back to reuse previous Chars-Box.
                   NULL,                // No group start
@@ -671,7 +714,6 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
             "   '(<' eat-leading,   '==' 'matched char' ' !=' no match\r\n"
             "   '+>' append to current list   '-->' append to next list\r\n"
             "   '-> _' = nothing (dead) \r\n\r\n");
-   C8 bufL[20], bufR[20];
 
    /* Run 'prog', which will create and terminate threads. Do until we either reach 'Match'
       in 'prog' (success) OR no more threads scheduled, meaning we exhausted the input
@@ -684,10 +726,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
    BOOL matchedMinimal = FALSE;
 
    //if(ml != NULL) {ml->put = 0;}
-
-
    U8 execCycles = 0;                     // Count how many times we renew the thread list.
-
                                                                         dbgPrint("\r\n%d: ---- [curr.put, next.put]: [%d %d]->[%d _]\r\n",
                                                                                                                   execCycles, curr->put, next->put, next->put);
    do {
@@ -699,7 +738,6 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
       T_RepeatCnt    loopCnt = 0;         // Repeats loop count.
 
       T_ThrdListIdx  ti;
-      T_ThrdListIdx  cput;
       BOOL addL, addR;
 
       if(execCycles % 10 == 0) {
@@ -709,8 +747,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
       for(ti = 0; ti < curr->put; ti++)                                       // For each active thread.
       {
          S_Thread * thrd = &curr->ts[ti];                                     // the current Thread.
-         S_Thread *newT;
 
+         S_Thread *newT;
          pc = thrd->pc;                                                       // The program counter and...
          sp = thrd->sp;                                                       // ..it's read pointer (to the source string)
          gs = thrd->subgroupStart;
@@ -718,6 +756,11 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
  ReloadInstuction:
          ip = &prog->buf[pc];                                                 // (Address of) the instruction referenced by 'pc'
+
+         // If this Thread was a duplicate of an earlier then skip it.
+         if(thrd->deleted == TRUE) {
+            dbgPrint("   %d(%d:) %s Deleted!\r\n", ti, pc, prntInstr((C8[30]){}, ip));
+            continue; }
 
          /* Premake a matches-cfg for most of the addThread()s below. Default is that
             thrd->matches is cloned into a new buffer[maxMatches]
@@ -736,7 +779,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
             case OpCode_CharBox:                      // --- A list of Character(s)
                if(ip->charBox.eatUntilMatch && thrd->eatMismatches)              // Have not yet matched input against 1st char-group of regex?
                {                                                                 // then advance thru input string until we find 1st match
-                  addL = FALSE; addR = FALSE; cput = next->put;
+                  addL = FALSE; addR = FALSE; T_ThrdListIdx cput = next->put;
 
                   if( matchCharsList(ip->charBox.segs, &sp, str, mustEnd, &thrd->caseRule) == TRUE)    // Matched current CharBox?...
                   {                                                              // ...yes, 'sp' is now at 1st char AFTER matched segment.
@@ -746,7 +789,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         char in the input string after the match (sp). We just got our leading match on this
                         Char-Box so a subsequent mismatch should terminate this thread => '_StopAtMismatch'.
                      */
-                     newT = newThread(pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, _StopAtMismatch, thrd->caseRule);
+                     newT = newThread(&(S_Thread){}, pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, _StopAtMismatch, thrd->caseRule);
 
                      if(!soloAnchor(&ip->charBox))
                         { addLeadMatch(newT, str, cBoxStart, cBoxStart); }
@@ -777,7 +820,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         addR = TRUE;                                             // then add a new thread to 'next' applying existing CharBox start at this new char.
                         dfltMatchCfg.clone = TRUE;                               // Spawning a new thread so clone match list of the existing thread (instead of referencing it).
                         addThread(next,
-                           newThread(pc, cBoxStart+1, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg,
+                           newThread(&(S_Thread){}, pc, cBoxStart+1, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg,
                               matchedMinimal ?                                   // Already got a (minimal) match?
                                  _StopAtMismatch : _EatMismatches, thrd->caseRule ) );           // then end this thread upon hitting a mismatch -
                      }
@@ -796,18 +839,19 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      {                                                           // ...then advance to this char retry the existing CharsBox
                         addR = TRUE;                                             // starting at this new char.
                         addThread( next,
-                           newThread( pc, cBoxStart+1, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg,
+                           newThread(&(S_Thread){}, pc, cBoxStart+1, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg,
                                        matchedMinimal ? _StopAtMismatch : _EatMismatches, thrd->caseRule));
                      }
                   }                              // --- else continue below.
-                                                                     dbgPrint("   %d(%d:) %s %s  %s    \t[ --> %s,%s {%d}]\r\n",
+                                                                     dbgPrint("   %d(%d:) %s %s  %s    \t[ --> %s,%s {%d}] \t\tLM%s\r\n",
                                                                         ti, pc,
                                                                         printRegexSample(&ip->charBox),
                                                                         addL ? "==" : "(<",
                                                                         printTriad(cBoxStart),
-                                                                        prntAddThrd(bufL, addL==FALSE, cput, pc+1),
-                                                                        prntAddThrd(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, pc),
-                                                                        loopCnt);
+                                                                        prntAddThrd((C8[25]){}, addL==FALSE, cput, pc+1),
+                                                                        prntAddThrd((C8[25]){}, addR==FALSE, addL==FALSE ? cput : cput+1, pc),
+                                                                        loopCnt,
+                                                                        addL == TRUE ? sprntMatches((C8[30]){}, &newT->matches ) : "");
                }
                else                                                  // else we got the 1st match (above)
                {
@@ -820,7 +864,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
                         Also, this was a char box; so bump the repeat count used by 'Split'to test repeat-ranges.
                      */
-                     newT = newThread(pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule);
+                     newT = newThread(&(S_Thread){}, pc+1, sp, loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule);
 
                      /* If the Chars-Box we matched is the 1st AND if it contains something besides an anchor then
                         add a (leading) zero-length match interval i.e [box-start, box-start]. This match will be updated
@@ -845,8 +889,9 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      if(ip->closesGroup)
                         { addMatch(newT, str, newT->subgroupStart, sp-1); }      // (sp-1, cuz src pointer is one-past subgroup close)
 
-                                                                     dbgPrint("   %d(%d:) %s ==  %s    \t[ --> %d(%d:),_ {%d}]\r\n",
-                                                                        ti, pc, printRegexSample(&ip->charBox), printTriad(cBoxStart), next->put, pc+1, loopCnt);
+                                                                     dbgPrint("   %d(%d:) %s ==  %s    \t[ --> %d(%d:),_ {%d}] \tM%s\r\n",
+                                                                        ti, pc, printRegexSample(&ip->charBox), printTriad(cBoxStart), next->put, pc+1, loopCnt,
+                                                                        sprntMatches((C8[30]){}, &newT->matches ));
                      addThread(next, newT);                                      // Add thread we made to 'next'
                   }
                   else                                                           // Source chars did not match? OR input string too long?
@@ -855,8 +900,8 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                         rtn = E_RegexRtn_BadInput;                               // then we are done running the program
                         goto CleanupAndRtn; }
                      else {                                                      // else we are done just with this thread...Do not renew it in 'next'
-                                                                     dbgPrint("   %d(%d:) %s !=  %s    \t[ --> _,_] \t\t\t\r\n",
-                                                                        ti, pc, printRegexSample(&ip->charBox), printTriad(cBoxStart));
+                                                                     dbgPrint("   %d(%d:) %s !=  %s    \t[ --> _,_] \t\tM%s\r\n",
+                                                                        ti, pc, printRegexSample(&ip->charBox), printTriad(cBoxStart), sprntMatches((C8[30]){}, &newT->matches ));
                      }
                   }
                }
@@ -886,9 +931,9 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                      { thrd->matches.ms[0].len = cBoxStart - str - thrd->matches.ms[0].start; }    // ...we already marked the start in matches.ms[0]; add the length.
 
                   // Copy any matches from this thread into the master
-                  U8 execCycles;
-                  for(execCycles = 0; execCycles < thrd->matches.put; execCycles++)
-                     { copyInMatch(ml, &thrd->matches.ms[execCycles], str); }
+                  U8 i;
+                  for(i = 0; i < thrd->matches.put; i++)
+                     { copyInMatch(ml, &thrd->matches.ms[i], str); }
                }
 
                if( flags & _RegexLT_Flags_MatchLongest )
@@ -903,7 +948,7 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
                {
                   if(next->put == 0)
                   {
-                     dbgPrint("   %d(%d:) Match!:             -- Final, first-maximal *****\r\n", ti, pc);
+                     dbgPrint("   %d(%d:) Match!: %s    -- Final, first-maximal *****\r\n", ti, pc, sprntMatches((C8[30]){}, &thrd->matches));
                   }
                   else
                   {
@@ -915,97 +960,111 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
 
 
             case OpCode_Jmp:                          // --- Jump
-               if( !foundEarlierDuplicate(curr, ti))
-               {
-                  dfltMatchCfg.clone = FALSE;
-                                                                        dbgPrint("   %d(%d:) jmp: %d     @ %s    \t[ +>  %d(%d:),_]    \t\t%s%s\r\n",
-                                                                                 ti, pc, ip->left,
-                                                                                 printTriad(sp),
-                                                                                 curr->put, ip->left,
-                                                                                 prntRpts(&ip->repeats, loopCnt),
-                                                                                 ip->left < pc ? "++" : "");
-                  addThread(curr, newThread(ip->left, sp,
-                                             ip->left < pc ? loopCnt+1 : loopCnt,  // If jumping back then bump the loop cnt.
-                                             gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule));
+            {
+               dfltMatchCfg.clone = FALSE;
+               S_Thread * newT;
+               T_ThrdListIdx cput = curr->put;
 
-                  /* If this JMP is the last opcode before match, then it can only be a jump back. (A jump to the
-                     next instruction is redundant; the  compiler would never produce it.) If we are JMPing back
-                     then we have matched every regex element at least once, and so have at least a minimal match.
-                     Once there is a minimal match, if any other search paths are 'eating' leading mismatches
-                     they must stop doing so. Otherwise these searches will continue past this 1st match and find
-                      any subsequent ones. Meaning, e.g ...
+               addThread(curr, newT = newThread(&(S_Thread){}, ip->left, sp,
+                                          ip->left < pc ? loopCnt+1 : loopCnt,  // If jumping back then bump the loop cnt.
+                                          gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule));
 
-                        34+' will bypass the 1st '344' in '1234411134444' and continue to the 2nd, '34444'.
+                                                                     dbgPrint("   %d(%d:) jmp: %d     @ %s    \t[ +>  %d(%d:),_]\t\t %s%s \tM%s\r\n",
+                                                                              ti, pc, ip->left,
+                                                                              printTriad(sp),
+                                                                              cput, ip->left,
+                                                                              prntRpts(&ip->repeats, loopCnt),
+                                                                              ip->left < pc ? "++" : "",
+                                                                              sprntMatches((C8[30]){}, &newT->matches));
 
-                     We don't want this unless we specifically unless '_RegexLT_Flags_MatchLongest/Latest'
-                     AND we get to compare the earlier and later matches. 'matchedMinimal' <- TRUE prevents other
-                     parallel searches from bypassing leading mismatches. If a search has already found
-                     it's first match, it may continue to completion and find a longer sequence than that found
-                     by the search which produced the first minimal match. But this sequence will be in the same
-                     segment of source text, and not a separate section further along.
-                  */
-                  if( prog->buf[pc+1].opcode == OpCode_Match)
-                     { matchedMinimal = TRUE; }
-               } // if( !foundEarlierDuplicate(curr, ti))
-               continue;
+               /* If this JMP is the last opcode before match, then it can only be a jump back. (A jump to the
+                  next instruction is redundant; the  compiler would never produce it.) If we are JMPing back
+                  then we have matched every regex element at least once, and so have at least a minimal match.
+                  Once there is a minimal match, if any other search paths are 'eating' leading mismatches
+                  they must stop doing so. Otherwise these searches will continue past this 1st match and find
+                   any subsequent ones. Meaning, e.g ...
+
+                     34+' will bypass the 1st '344' in '1234411134444' and continue to the 2nd, '34444'.
+
+                  We don't want this unless we specifically unless '_RegexLT_Flags_MatchLongest/Latest'
+                  AND we get to compare the earlier and later matches. 'matchedMinimal' <- TRUE prevents other
+                  parallel searches from bypassing leading mismatches. If a search has already found
+                  it's first match, it may continue to completion and find a longer sequence than that found
+                  by the search which produced the first minimal match. But this sequence will be in the same
+                  segment of source text, and not a separate section further along.
+               */
+               if( prog->buf[pc+1].opcode == OpCode_Match)
+                  { matchedMinimal = TRUE; }
+            } // case OpCode_Jmp:
+            continue;
 
             case OpCode_Split:                        // --- Split
-               if( !foundEarlierDuplicate(curr, ti))
+            {
+               /* Add both forks to 'curr' thread; both will execute rightaway in this loop.
+
+                  But... if this 'Split' instruction contains repeat-counts conditionals, then
+                  continue on a loop or down a branch only if relevant the count criterion is met.
+
+                  The left fork is a loopback thru the current chars-block, and continues
+                  until 'max-repeats'. The right for is a jump forward to the next char
+                  block, and doesn't happen until min-repeats.
+               */
+
+               addL = FALSE; addR = FALSE;
+               T_ThrdListIdx cput = curr->put;                                // Mark current 'put' for printout below, before we addThread()
+
+               S_Thread *newL, *newR;
+
+               // ----- Left Fork? Loop back.
+               if(!ip->repeats.cntsValid || loopCnt < ip->repeats.max)        // Unconditional repeat? OR repeat is conditional AND have not tried max-repeats of current chars-block?
                {
-                  /* Add both forks to 'curr' thread; both will execute rightaway in this loop.
+                  dfltMatchCfg.clone = FALSE;
+                  addThread(curr, newL = newThread(&(S_Thread){}, ip->left, sp, ip->left < pc ? loopCnt+1 : loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule));
+                  addL = TRUE;
+               }   // then this thread loops back to the current chars-block.
 
-                     But... if this 'Split' instruction contains repeat-counts conditionals, then
-                     continue on a loop or down a branch only if relevant the count criterion is met.
+               // ----- Right Fork? Forward.
+               if(!ip->repeats.cntsValid || loopCnt >= ip->repeats.min)       // Unconditional repeat? OR repeat is conditional AND have tried at least min-repeats of current chars-block.
+               {
+                  dfltMatchCfg.clone = TRUE;
+                  addThread(curr, newR = newThread(&(S_Thread){}, ip->right, sp, 0, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule));
+                  addR = TRUE;
+               }  // then will now also attempt to match the next text block.
+                                                                     dbgPrint("   %d(%d:) split(%d %d) @ %s    \t[ +>  %s,%s]\t %s%s \tLM%s \tRM%s\r\n",
+                                                                        ti, pc, ip->left, ip->right,
+                                                                        printTriad(sp),
+                                                                        prntAddThrd((C8[25]){}, addL==FALSE, cput, ip->left),
+                                                                        prntAddThrd((C8[25]){}, addR==FALSE, addL==FALSE ? cput : cput+1, ip->right),
+                                                                        prntRpts(&ip->repeats, loopCnt),
+                                                                        ip->left < pc ? "++" : "",
+                                                                        addL == TRUE ? sprntMatches((C8[30]){}, &newL->matches) : "_",
+                                                                        addR == TRUE ? sprntMatches((C8[30]){}, &newR->matches) : "_");
 
-                     The left fork is a loopback thru the current chars-block, and continues
-                     until 'max-repeats'. The right for is a jump forward to the next char
-                     block, and doesn't happen until min-repeats.
-                  */
-
-                  addL = FALSE; addR = FALSE;
-                  cput = curr->put;                                              // Mark current 'put' for printout below, before we addThread()
-
-                  // ----- Left Fork? Loop back.
-                  if(!ip->repeats.cntsValid || loopCnt < ip->repeats.max)        // Unconditional repeat? OR repeat is conditional AND have not tried max-repeats of current chars-block?
-                  {
-                     dfltMatchCfg.clone = FALSE;
-                     addThread(curr, newThread(ip->left, sp, ip->left < pc ? loopCnt+1 : loopCnt, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule));
-                     addL = TRUE;
-                  }   // then this thread loops back to the current chars-block.
-
-                  // ----- Right Fork? Forward.
-                  if(!ip->repeats.cntsValid || loopCnt >= ip->repeats.min)       // Unconditional repeat? OR repeat is conditional AND have tried at least min-repeats of current chars-block.
-                  {
-                     dfltMatchCfg.clone = TRUE;
-                     addThread(curr, newThread(ip->right, sp, 0, gs, thrd->lastOpensSub, &dfltMatchCfg, thrd->eatMismatches, thrd->caseRule));
-                     addR = TRUE;
-                  }  // then will now also attempt to match the next text block.
-                                                                        dbgPrint("   %d(%d:) split(%d %d) @ %s    \t[ +>  %s,%s]   \t\t%s%s\r\n",
-                                                                           ti, pc, ip->left, ip->right,
-                                                                           printTriad(sp),
-                                                                           prntAddThrd(bufL, addL==FALSE, cput, ip->left),
-                                                                           prntAddThrd(bufR, addR==FALSE, addL==FALSE ? cput : cput+1, ip->right),
-                                                                           prntRpts(&ip->repeats, loopCnt),
-                                                                           ip->left < pc ? "++" : "");
-
-                  /* Same as for JMP above; if this 'Split' is followed by a 'Match', then one of the splits must
-                     be a backward jump. This implies we have matched every part of the regex at least once.
-                  */
-                  if( prog->buf[pc+1].opcode == OpCode_Match)
-                     { matchedMinimal = TRUE; }
-               } // if( !foundEarlierDuplicate(curr, ti))
-               continue;
+               /* Same as for JMP above; if this 'Split' is followed by a 'Match', then one of the splits must
+                  be a backward jump. This implies we have matched every part of the regex at least once.
+               */
+               if( prog->buf[pc+1].opcode == OpCode_Match)
+                  { matchedMinimal = TRUE; }
+            } // case OpCode_Split:
+            continue;
          }     //switch(ip->opcode )
       }     // for(ti = 0; ti < curr->put; ti++)
 EndsCurrentStep:
-
-      /* Exhausted the current thread list. But may have queued some new threads in 'next.
-         Make 'next' the new 'curr' and clean out 'next' for next go-around..
-      */
                                                                         dbgPrint("\r\n%d: ---- [curr.put, next.put]: [%d %d]->[%d _]\r\n",
                                                                                                                   execCycles+1, curr->put, next->put, next->put);
-      swapPtr(&curr, &next);
-      clearThreadList(next);
+      /* Exhausted the current thread list. But if the regex is not exhausted then will
+         have queued new threads in 'next. Clean out 'curr' and make 'next' the new 'curr'.
+
+         Before running the 'next' Thread list we have built, remove any duplicate Threads in it,
+         folding the matches in the into one Thread that is retained.  Duplicate Threads at are
+         ones with the same instruction and with the same repeat-count. They can happen e.g with
+         regexes which have explosive quantifiers. Two or more threads have reached the same
+         Instruction by different routes. There's no point in propagating each of these duplicates;
+         they will take the same same path.
+      */
+      removeDuplicateThreads(next, prog);
+      clearThreadList(curr);                       // Clear current list; to be populated from 'next'
+      swapPtr(&curr, &next);                       // Make 'next' the current list - go round again.
 
       // Break if too many cycles of the thread list. Something badly wrong; as this is based of the
       // length of the input string.

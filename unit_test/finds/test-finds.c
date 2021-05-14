@@ -322,6 +322,7 @@ void test_Finds(void)
       // Regex            Test string        Result code           Matches (if any)
       //                                                      {how_many [start, len]..}
       // ----------------------------------------------------------------------------
+      //{ "fob_([\\d]{5,10})_([\\d]{1,3})\\.log", "fob_098765432_1.log",    E_RegexRtn_Match,  {3, {{0,19}, {4,9}, {14,1}}}             },       // The empty string is no-match
 #if 1
       { "abc",          "",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
       { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
@@ -432,7 +433,9 @@ void test_IPAddr(void)
       // Regex            Test string        Result code           Matches (if any)
       //                                                      {how_many [start, len]..}
       // ----------------------------------------------------------------------------
-      { "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",        "0.0.0.0",           E_RegexRtn_Match,    {1, {{0,7}}}},
+      //{ "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",        "0.0.0.0",            E_RegexRtn_Match,    {1, {{0,7}}}},
+//      { "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",        "255.255.255.255",    E_RegexRtn_Match,    {1, {{0,15}}}},
+      { "[0-9]{1,3}\\.[0-9]{1,3}",        "123.4",    E_RegexRtn_Match,    {1, {{0,5}}}},
    };
 
    RegexLT_S_Cfg cfg = {
