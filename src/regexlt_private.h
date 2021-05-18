@@ -56,7 +56,8 @@ typedef enum { E_Continue = 0, E_Complete = 1, E_Fail } T_ParseRtn;
 typedef struct {
    C8    prevCh;
    BOOL  range,            // Previous ch was a '-', meaning we are parsing
-         negate,           // Previous ch was '^', meaning following char is a negation.
+         negate,           // Previous ch was '^', meaning following char(s) are a negation.
+         negateCh,         // Got at least 1 char following '^'.
          esc;              // an escape '\', to be followed by a class specifier.
    struct {
       U8 hi;

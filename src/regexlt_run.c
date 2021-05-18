@@ -689,10 +689,11 @@ PRIVATE T_RegexRtn runOnce(S_InstrList *prog, C8 const *str, RegexLT_S_MatchList
       and 'curr' are swapped, i.e 'next' becomes the new 'curr'.
 
       Because no instruction splits into more than 2 paths, the tree/threads for executing
-      'prog' can be no wider than 'prog' is long, plus 1 for the root thread.
+      'prog' can be no wider than twice 'prog' length, plus 1 for the root thread. That's the reasoning
+      at least; but it's not correct because some test cases need more.
    */
    S_ThreadList *curr, *next;
-   T_ThrdListIdx len = prog->put + 23;     // Add 3 to be safe.
+   T_ThrdListIdx len = (2 * (prog->put)) + 5;     // Add 3 to be safe.
    curr = threadList(len);
    next = threadList(len);
 

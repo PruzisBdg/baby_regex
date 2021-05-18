@@ -62,17 +62,30 @@ PUBLIC void regexlt_classParser_Init(S_ParseCharClass *p)
    p->negate = FALSE;   // Until there's a '^'
    p->range = FALSE;    // Until there's e.g A-Z
    p->esc = FALSE;      // Until there's a '\'.
+   p->negateCh = FALSE; // until at least one char after '^'.
    p->hex.step = 0;     // Until we hit 'x' in e.g '\x25'
+   p->hex.hi = 0;
 }
 
 /* ---------------------------------- addOrRemove -------------------------------------- */
 
-PUBLIC void addOrRemove(S_ParseCharClass *p, S_C8bag *cc, C8 newCh)
+PRIVATE void addOrRemove(S_ParseCharClass *p, S_C8bag *cc, C8 newCh)
 {
-   if(p->negate == TRUE)                     // To be removed from existing range?
-      { C8bag_RemoveOne(cc, newCh); p->negate = FALSE; }   // We are done with this negation.
-   else                                      // else to be added to existing range
+   if(p->negate == TRUE) {             // To be removed from existing range?
+      C8bag_RemoveOne(cc, newCh);
+      p->negateCh = TRUE; }            // Mark that at least 1 char followed '[^'.
+   else                                // else to be added to existing range
       { C8bag_AddOne(cc, newCh); }
+}
+
+PRIVATE BOOL addOrRemoveRange(S_ParseCharClass *p, S_C8bag *cc, C8 from, C8 to)
+{
+   if(p->negate == TRUE) {
+      BOOL rtn = C8bag_RemoveRange(cc, from, to);
+      p->negate = FALSE;
+      return rtn; }
+   else
+      { return C8bag_AddRange(cc, from, to); }
 }
 
 /* ------------------------------------ regexlt_classParser_AddCh ------------------------------------
@@ -94,46 +107,46 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
          return E_Fail;
 
       case ']':                                       // Closing a class?...
-         if(p->range == TRUE || p->negate == TRUE)             // ...but did not complete range or negation?
+         if(p->negate == TRUE && p->negateCh == FALSE &&       // Did not have at least one char after '^', e.g '[^0' ? AND
+            p->range == FALSE)                                 // did not open a range after '^' e,g '[^0-' ?
             { return E_Fail; }                                 // then fail
+         else if(p->range == TRUE)                             // Opened a range but did not close it e.g '[^0-]'?
+         {
+            addOrRemove(p, cc, p->prevCh);                     // then both '-' and the char preceding it are literals...
+            addOrRemove(p, cc, '-');                           // ...add both or remove both if negated ('^').
+            return E_Complete;                                 // and we are done.
+         }
          else                                                  // else legal completion of a class
             { return E_Complete; }
          break;
 
       case '-':                                       // ...Range char?
-         if(p->esc == TRUE)                                    // Prev was esc?
+         if(p->esc == TRUE || p->prevCh == '[')                // Prev was esc?
          {
             C8bag_AddOne(cc, '-');                             // then it's a literal '-'. Add it to current class
             p->esc = FALSE;                                    // and we have used the ESC.
          }
-         else if(p->prevCh == '[' || p->prevCh == '-' || p->prevCh == '^')   // But previous char was not a letter/number whatever?
+         else if(p->prevCh == '-' || p->prevCh == '^')         // But previous char was not a letter/number whatever?
             { return E_Fail; }                                 // so range is missing it's start -> fail
          else
             { p->range = TRUE; }                               // else we are specifying a range now; continue.
          break;
 
-      case '^':                                       // ... Negation?
-         if(p->esc == TRUE)                                    // Prev was esc?
-         {
-            C8bag_AddOne(cc, '^');                             // then it's a literal '^'. Add it to current class
-            p->esc = FALSE;                                    // and we have used the ESC.
-         }
-         else if(p->prevCh == '-' || p->prevCh == '^' ||       // But just opened a negation or range? OR
-            p->negate == TRUE)                                 // were already negating (a range)?
-            { return E_Fail; }                                 // then illegal construction -> fail
-         else
+      case '^':                                       // ... Negation? (maybe)
+         if(p->prevCh == '[' && p->negate == FALSE && p->esc == FALSE)   // '^' right after '['? (not escaped, not already '^'ed)
          {
             p->negate = TRUE;                                  // else we are negating now; continue.
-
-            if(p->prevCh == '[')                               // Is '[^...?
-            {                                                  // means we start with everything and will subtract members
-               C8bag_Invert(cc);                               // so invert the initial empty class to make a full one.
-            }
+            C8bag_Invert(cc);                                  // so invert the initial empty class to make a full one.
+         }
+         else                                                  // else not '[^'; treat as a literal '^'.
+         {
+            addOrRemove(p, cc, '^');                           // Add or remove '^'
          }
          break;
 
       case '\\':                                      // ... Opens a pre-defined character class or an in-range escaped literal.
-         if(p->prevCh == '-' || p->range == TRUE)              // But we are specifying a range?... can't put a pre-defined class within that..
+         if(p->prevCh == '-' ||
+            (p->range == TRUE && *(src+1) != 'x'))              // But we are specifying a range?... can't put a pre-defined class within that..
             { return E_Fail; }                                 // so fail
          else
             { p->esc = TRUE; }                                 // else mark the escape, to be followed, presumably, by the class specifier.
@@ -150,16 +163,44 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
                {
                   p->hex.hi = HexToNibble(newCh);              // read it.
                   p->hex.step = 2;
+                  break;
                }
                else                                            // else HexASCII for low nibble.
                {                                               // Convert to byte and add/remove from bag.
                   C8 hexascii = (p->hex.hi << 4) + HexToNibble(newCh);
-                  addOrRemove(p, cc, hexascii);
-                  p->prevCh = hexascii;                        // Record this hexascii, even though we added it. It may be the start of a range e.g '\x33-\x44'.
-                  p->hex.step = 0;                             // and we are done reading hex.
+
+                  /* This Regex only supports ASCII 0...7F inside a range. PCRE handles 0...FF but limiting
+                     to 0x7F keeps the store needed for a range (C8bag) to 8 bytes, instead of 16 (U8bag).
+                  */
+                  if(hexascii < 0)                             // Outside 0...0x7F?
+                     { return E_Fail; }                        // then fail?
+                  else                                         // else hexascii is 0...7F
+                  {
+                     if(p->range == TRUE)
+                     {
+                        p->range = FALSE;
+
+                        /* Add or remove range depending on 'p->negate'. Will fail if range is upside down
+                           i.e 'prevCh > 'hexascii' or if either of these is < 0.
+                        */
+                        if(FALSE == addOrRemoveRange(p, cc, p->prevCh, hexascii)) {
+                           return E_Fail; }
+                     }
+                     else
+                     {
+                        p->hex.step = 0;                          // and we are done reading hex.
+                        p->prevCh = hexascii;                     // Record this hexascii, even though we added it. It may be the start of a range e.g '\x33-\x44'.
+
+                        if(*(src+1) != '-')
+                           { addOrRemove(p, cc, hexascii); }      // So add 'hexascii' or remove it if it is negated.
+                        else
+                           { break; }
+                     }
+                  }
                }
             }
-         }
+         } // if(p->hex.step > 0)
+
          else if(p->esc == TRUE)                               // Some escaped char?
          {
             p->esc = FALSE;                                    // Will handle ESC; clear flag
@@ -190,19 +231,18 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
          else if(p->range == TRUE) {                            // We were specifying a range?
             p->range = FALSE;                                  // then we close it now.
 
-            if(newCh < p->prevCh)                              // End-of-range is less than start?
-               { return E_Fail; }                              // that's a fail right there.
-            else {                                             // else legal range.
-               if(p->negate == TRUE)                           // Remove these chars from the range specified so far?
-                  { C8bag_RemoveRange(cc, p->prevCh, newCh); p->negate = FALSE; }    // This negation is done.
-               else                                            // else add to any specified so far.
-                  { C8bag_AddRange(cc, p->prevCh, newCh); }}}
+            /* Add or remove range depending on 'p->negate'. Will fail if range is upside down
+               i.e 'newCh > 'hexascii' or if either of these is < 0.
+            */
+            if(FALSE == addOrRemoveRange(p, cc, p->prevCh, newCh)) {
+               return E_Fail; }}
 
          else if(*(src+1) != '-')                              // else not end of a range. NOT the start of a range either?
-            { addOrRemove(p, cc, newCh); }                     // then just a lone char; remove it from the range.
+            { addOrRemove(p, cc, newCh); }                     // then just a lone char; add or remove it.
 
-         p->prevCh = newCh;                                    // Remember this char for next time - e.g if it's start of a range.
-   }
+      // Got here if processed an actual char, not '-', '^' or '\'. Remember it - e.g if it's start of a range.
+      p->prevCh = newCh;
+   } // switch(newCh)
    return E_Continue;   // Didn't fail or complete above, so continue.
 }
 

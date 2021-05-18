@@ -261,7 +261,16 @@ PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxC
 
             case OpCode_Class: {                                              // ...a char class
                C8 listClass[257];
-               C8bag_List(listClass, seg->payload.charClass);                          // List elements of the class. 0..256off
+               BOOL invert;
+               if( C8bag_Count(seg->payload.charClass) > 128 ) {
+                  C8bag_ListInv(listClass, seg->payload.charClass);
+                  invert = TRUE;
+               }
+               else {
+                  invert = FALSE;
+                  C8bag_List(listClass, seg->payload.charClass);                       // List elements of the class. 0..256off
+               }
+
                size_t len = strlen(listClass);                                         // We have these many
 
                if(charCnt + len + 2 > maxChars)                                        // No room to add e.g '[12345]'?
