@@ -35,10 +35,6 @@ void test_CharClass(void) {
    typedef struct { C8 const *expr; S_C8bag cClass; T_ParseRtn rtn; } S_Tst;
 
    S_Tst const tsts[] = {
-      // Chained '-' does NOT start a new range; is read as a literal.
-      //{.expr = "[0-9-A]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x03FF2000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
-
-      {.expr = "[\\x00-\\x09]", .cClass = (S_C8bag){.lines = {0x000003FF, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
       // Empty class is legal. This isn't a PCRE standard; but it's a good default.
       {.expr = "[]",          .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
 
@@ -66,12 +62,22 @@ void test_CharClass(void) {
       {.expr = "[01234-7]",   .cClass = (S_C8bag){.lines = {0x00000000, 0x00FF0000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
       {.expr = "[0-36-9]",    .cClass = (S_C8bag){.lines = {0x00000000, 0x03CF0000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
 
+      // Chained '-' does NOT start a new range; is read as a literal.
+      {.expr = "[0-9-A]",     .cClass = (S_C8bag){.lines = {0x00000000, 0x03FF2000, 0x00000002, 0x00000000}}, .rtn = E_Complete},
+
       // Longer class OK? - and negated.
       {.expr = "[ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]",
                               // A-Z = 0x41-0x5A; a-z = 0x61-0x7A; 0-9 = 0x30-0x39
                               .cClass = (S_C8bag){.lines = {0x00000000, 0x03FF0000, 0x07FFFFFE, 0x07FFFFFE}}, .rtn = E_Complete},
       {.expr = "[^ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789]",
                               .cClass = (S_C8bag){.lines = {0xFFFFFFFF, 0xFC00FFFF, 0xF8000001, 0xF8000001}}, .rtn = E_Complete},
+
+      // Range brackets can be escaped.
+      {.expr = "[\\]]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x20000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\[]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x08000000, 0x00000000}}, .rtn = E_Complete},
+      // Make sure OK if both included.
+      {.expr = "[\\[\\]]",    .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x28000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\]\\[]",    .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x28000000, 0x00000000}}, .rtn = E_Complete},
 
       // ---- Negations
 
@@ -109,6 +115,14 @@ void test_CharClass(void) {
       // 0x80 - 0xFF Fail.
       {.expr = "[\\x80]",           .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x80000000}}, .rtn = E_Fail},
       {.expr = "[\\xFF]",           .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x80000000}}, .rtn = E_Fail},
+
+      // 1-digit, truncated by ']' -> 0x03
+      {.expr = "[\\x3]",            .cClass = (S_C8bag){.lines = {0x00000008, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      // 1 digit, trucated by any non Hex ASCII
+      {.expr = "[\\x3z]",           .cClass = (S_C8bag){.lines = {0x00000008, 0x00000000, 0x00000000, 0x04000000}}, .rtn = E_Complete},
+      {.expr = "[\\x3\\d]",         .cClass = (S_C8bag){.lines = {0x00000008, 0x03FF0000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\x3-\\x09]",      .cClass = (S_C8bag){.lines = {0x000003F9, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+
       // Multiples... to be sure sub-parser is reset
       {.expr = "[\\x00\\x01\\x02]", .cClass = (S_C8bag){.lines = {0x00000007, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
       // 'A' after 0x00 is a literal.
@@ -118,6 +132,38 @@ void test_CharClass(void) {
       // Negate multiple HexASCII
       {.expr = "[^\\x00\\x01\\x02]",.cClass = (S_C8bag){.lines = {0xFFFFFFF8, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}}, .rtn = E_Complete},
 
+      {.expr = "[\\x00-\\x09]", .cClass = (S_C8bag){.lines = {0x000003FF, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+
+      // ---- Char Classes.
+
+      // Digits 0-9; and not.
+      {.expr = "[\\d]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x03FF0000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\D]",       .cClass = (S_C8bag){.lines = {0xFFFFFFFF, 0xFC00FFFF, 0xFFFFFFFF, 0xFFFFFFFF}}, .rtn = E_Complete},
+      // Alphanumeric + underscore and not.
+      {.expr = "[\\w]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x03FF0000, 0x87FFFFFE, 0x07FFFFFE}}, .rtn = E_Complete},
+      {.expr = "[\\W]",       .cClass = (S_C8bag){.lines = {0xFFFFFFFF, 0xFC00FFFF, 0x78000001, 0xF8000001}}, .rtn = E_Complete},
+      // Whitespace and not whitespace
+      {.expr = "[\\s]",       .cClass = (S_C8bag){.lines = {0x00003E00, 0x00000001, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\S]",       .cClass = (S_C8bag){.lines = {0xFFFFC1FF, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF}}, .rtn = E_Complete},
+
+      // ---- Non-printables, as text.
+
+      {.expr = "[\\r]",       .cClass = (S_C8bag){.lines = {0x00002000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\n]",       .cClass = (S_C8bag){.lines = {0x00000400, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\t]",       .cClass = (S_C8bag){.lines = {0x00000200, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\a]",       .cClass = (S_C8bag){.lines = {0x00000080, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\e]",       .cClass = (S_C8bag){.lines = {0x08000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\f]",       .cClass = (S_C8bag){.lines = {0x00001000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[\\v]",       .cClass = (S_C8bag){.lines = {0x00000800, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+
+      // ---- Fails
+
+      // Open again an already open class.
+      {.expr = "[[",           .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Fail},
+      // Incomplete class. Parser is waiting for more (E_Continue).
+      {.expr = "[b",           .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Continue},
+      // Illegal / non-supported escape char.
+      {.expr = "[\\z]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Fail},
    };
 
    BOOL testOne(S_Tst const *t, C8 *msg)
@@ -198,7 +244,15 @@ void test_CharClass(void) {
       }
       else if(rtn == E_Continue)
       {
-         sprintf(msg, "Parse not complete %s -> ???\r\n", t->expr);
+         if(t->rtn != E_Continue)
+         {
+            sprintf(msg, "Parse not complete [%s...  Expected E_Continue, got %s\r\n",
+                              t->expr, t->rtn == E_Fail ? "E_Fail" : "E_Complete");
+         }
+         else
+         {
+            return TRUE;
+         }
       }
       return FALSE;     // Did not return TRUE above, so some fail.
    } // testOne().

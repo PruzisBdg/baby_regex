@@ -129,6 +129,14 @@
 		<Unit filename="../unit_test/baby_regex_common_pre.mak">
 			<Option target="Unity_TDD" />
 		</Unit>
+		<Unit filename="../unit_test/char_class/char_class.mak">
+			<Option target="Unity_TDD" />
+		</Unit>
+		<Unit filename="../unit_test/char_class/test-char_class.c">
+			<Option compilerVar="CC" />
+			<Option target="Unity_TDD" />
+			<Option target="Debug_Console" />
+		</Unit>
 		<Unit filename="../unit_test/finds/finds.mak">
 			<Option target="Unity_TDD" />
 		</Unit>
