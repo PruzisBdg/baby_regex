@@ -4,6 +4,8 @@
 #define _TRACE_PRINTS_ON false
    #else
 #define TEST_FAIL()
+#define TEST_ASSERT_TRUE(...)
+#define TEST_ASSERT_FALSE(...)
 #define _TRACE_PRINTS_ON true
    #endif // _TARGET_IS
 
@@ -26,6 +28,34 @@ void setUp(void) {
 /* -------------------------------------- tearDown ------------------------------------------- */
 
 void tearDown(void) {
+}
+
+/* ---------------------------- test_EmptyStr ----------------------------------------- */
+
+void test_EmptyStr(void)
+{
+   S_ParseCharClass *p = &(S_ParseCharClass){};          // Make and initialise a Parser;
+   regexlt_classParser_Init(p);
+   S_C8bag *cc = &(S_C8bag){0};                          // Char class from "[nnn]" goes here.
+
+   // Empty string returns Fail.
+   TEST_ASSERT_TRUE( E_Fail == regexlt_classParser_AddCh(p, cc, ""));
+}
+
+
+/* ---------------------------- test_AddDef_Fails ---------------------------------------------
+
+   All legal Char Classes are tested in test_CharClass() below. Check some fails here.
+*/
+void test_AddDef_Fails(void)
+{
+   S_ParseCharClass *p = &(S_ParseCharClass){};          // Make and initialise a Parser;
+   regexlt_classParser_Init(p);
+   S_C8bag *cc = &(S_C8bag){0};                          // Char class from "[nnn]" goes here.
+
+   // The Char Class definition must start with '['. Empty string or other chars fail.
+   TEST_ASSERT_FALSE(regexlt_classParser_AddDef(p, cc, ""));
+   TEST_ASSERT_FALSE(regexlt_classParser_AddDef(p, cc, "ab"));
 }
 
 
@@ -79,6 +109,10 @@ void test_CharClass(void) {
       {.expr = "[\\[\\]]",    .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x28000000, 0x00000000}}, .rtn = E_Complete},
       {.expr = "[\\]\\[]",    .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x28000000, 0x00000000}}, .rtn = E_Complete},
 
+      // Escaped '\', and it's inverse.
+      {.expr = "[\\\\]",      .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x10000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[^\\\\]",     .cClass = (S_C8bag){.lines = {0xFFFFFFFF, 0xFFFFFFFF, 0xEFFFFFFF, 0xFFFFFFFF}}, .rtn = E_Complete},
+
       // ---- Negations
 
       {.expr = "[^0]",        .cClass = (S_C8bag){.lines = {0xFFFFFFFF, 0xFFFEFFFF, 0xFFFFFFFF, 0xFFFFFFFF}}, .rtn = E_Complete},
@@ -94,15 +128,39 @@ void test_CharClass(void) {
       // Escaped '^' is literal.
       {.expr = "[\\^]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x40000000, 0x00000000}}, .rtn = E_Complete},
 
+      // Where '^' itself is one end of a range.
+
+      // 'Z' thru '^' i.e 'Z[]\^'
+      {.expr = "[Z-^]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x7C000000, 0x00000000}}, .rtn = E_Complete},
+      // Range upside-down; fail.
+      {.expr = "[a-^]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Fail},
+      {.expr = "[0^-Z]",      .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Fail},
+
       // Unprepended '-' is literal '-'
       {.expr = "[-]",         .cClass = (S_C8bag){.lines = {0x00000000, 0x00002000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      // Repeated '-' is just '-' (2nd is not interpreted a range marker)
+      {.expr = "[--]",        .cClass = (S_C8bag){.lines = {0x00000000, 0x00002000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
 
       // Opened a Range but did not close it. Then '-' and preceding char '0' are literals.
-      {.expr = "[0-]",         .cClass = (S_C8bag){.lines = {0x00000000, 0x00012000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[0-]",        .cClass = (S_C8bag){.lines = {0x00000000, 0x00012000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
       // Same as '[0-]' but negated.
-      {.expr = "[^0-]",        .cClass = (S_C8bag){.lines = {0xFFFFFFFF, 0xFFFEDFFF, 0xFFFFFFFF, 0xFFFFFFFF}}, .rtn = E_Complete},
+      {.expr = "[^0-]",       .cClass = (S_C8bag){.lines = {0xFFFFFFFF, 0xFFFEDFFF, 0xFFFFFFFF, 0xFFFFFFFF}}, .rtn = E_Complete},
       // '-' after a range is a literal
-      {.expr = "[0-9-]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x03FF2000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      {.expr = "[0-9-]",      .cClass = (S_C8bag){.lines = {0x00000000, 0x03FF2000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+
+      // Where '-' itself is one end of the range
+
+      // From '*' thru '-' i.e '*+.-'
+      {.expr = "[*--]",        .cClass = (S_C8bag){.lines = {0x00000000, 0x00003C00, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      // From '-' thru '0' i.e '-./0'
+      {.expr = "[--0]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x0001E000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      // However way it's read, is just '-'
+      {.expr = "[---]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x00002000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+      // Upside-down; fail.
+      {.expr = "[0--]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Fail},
+      {.expr = "[--*]",       .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Fail},
+
+      {.expr = "[-\\r]",      .cClass = (S_C8bag){.lines = {0x00002000, 0x00002000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
 
       /* ---- HexASCII Literals
 
@@ -116,12 +174,20 @@ void test_CharClass(void) {
       {.expr = "[\\x80]",           .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x80000000}}, .rtn = E_Fail},
       {.expr = "[\\xFF]",           .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x80000000}}, .rtn = E_Fail},
 
+      // HexASCII range.
+      {.expr = "[\\x00-\\x09]", .cClass = (S_C8bag){.lines = {0x000003FF, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+
       // 1-digit, truncated by ']' -> 0x03
       {.expr = "[\\x3]",            .cClass = (S_C8bag){.lines = {0x00000008, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
       // 1 digit, trucated by any non Hex ASCII
       {.expr = "[\\x3z]",           .cClass = (S_C8bag){.lines = {0x00000008, 0x00000000, 0x00000000, 0x04000000}}, .rtn = E_Complete},
       {.expr = "[\\x3\\d]",         .cClass = (S_C8bag){.lines = {0x00000008, 0x03FF0000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
       {.expr = "[\\x3-\\x09]",      .cClass = (S_C8bag){.lines = {0x000003F9, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
+
+      // '\x' was not followed by HexASCII.
+      {.expr = "[\\xz]",            .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x80000000}}, .rtn = E_Fail},
+      // Upside-down range in HexASCII
+      {.expr = "[\\x09-\\x00]",     .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x80000000}}, .rtn = E_Fail},
 
       // Multiples... to be sure sub-parser is reset
       {.expr = "[\\x00\\x01\\x02]", .cClass = (S_C8bag){.lines = {0x00000007, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
@@ -131,8 +197,6 @@ void test_CharClass(void) {
       {.expr = "[\\x00A-F\\x02]",   .cClass = (S_C8bag){.lines = {0x00000005, 0x00000000, 0x0000007E, 0x00000000}}, .rtn = E_Complete},
       // Negate multiple HexASCII
       {.expr = "[^\\x00\\x01\\x02]",.cClass = (S_C8bag){.lines = {0xFFFFFFF8, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF}}, .rtn = E_Complete},
-
-      {.expr = "[\\x00-\\x09]", .cClass = (S_C8bag){.lines = {0x000003FF, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Complete},
 
       // ---- Char Classes.
 
@@ -145,6 +209,16 @@ void test_CharClass(void) {
       // Whitespace and not whitespace
       {.expr = "[\\s]",       .cClass = (S_C8bag){.lines = {0x00003E00, 0x00000001, 0x00000000, 0x00000000}}, .rtn = E_Complete},
       {.expr = "[\\S]",       .cClass = (S_C8bag){.lines = {0xFFFFC1FF, 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFF}}, .rtn = E_Complete},
+
+      // Char class cannot close a range, so read as 0 thru '\' plus 'd' = 0x30-0x5C plus 0x64
+      {.expr = "[0-\\d]",     .cClass = (S_C8bag){.lines = {0x00000000, 0xFFFF0000, 0x1FFFFFFF, 0x00000010}}, .rtn = E_Complete},
+      // Range upside-down; fail.
+      {.expr = "[a-\\d]",     .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Fail},
+
+      // Char class cannot open a range so '\\' is read as literal and the range is d-g.
+      {.expr = "[\\d-g]",     .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x10000000, 0x000000F0}}, .rtn = E_Complete},
+      // d-0 is upside-down; fail.
+      {.expr = "[\\d-0]",     .cClass = (S_C8bag){.lines = {0x00000000, 0x00000000, 0x00000000, 0x00000000}}, .rtn = E_Fail},
 
       // ---- Non-printables, as text.
 
@@ -246,7 +320,7 @@ void test_CharClass(void) {
       {
          if(t->rtn != E_Continue)
          {
-            sprintf(msg, "Parse not complete [%s...  Expected E_Continue, got %s\r\n",
+            sprintf(msg, "Parse not complete '%s...'  Expected E_Continue, got %s\r\n",
                               t->expr, t->rtn == E_Fail ? "E_Fail" : "E_Complete");
          }
          else
@@ -272,6 +346,10 @@ void test_CharClass(void) {
    if(fails == FALSE)
    {
       printf("Char Class; %u tests succeeded\r\n", RECORDS_IN(tsts));
+   }
+   else
+   {
+      TEST_FAIL();
    }
 }
 

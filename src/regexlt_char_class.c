@@ -170,24 +170,44 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
       case '-':                                       // ...Range char?
          p->negateCh = TRUE;     // Mark at least 1 char after as '^'
 
+         if(p->range == TRUE)
+         {
+            p->range = FALSE;
+            p->closedRange = TRUE;                             // and mark that we closed it.
+
+            /* Add or remove range depending on 'p->negate'. Will fail if range is upside down
+               i.e 'newCh > 'hexascii' or if either of these is < 0.
+            */
+            if(FALSE == addOrRemoveRange(p, cc, p->prevCh, '-')) {
+               return E_Fail; }
+         }
          /* If '[-' or '\-' (esc) or e.g '0-9-' (closedRange) then this '-' is literal; not part
             of a range.
          */
-         if(p->esc == TRUE || p->prevCh == '[' || p->closedRange == TRUE)  // '-' is a literal?
+         else if(p->esc == TRUE || p->prevCh == '[' || p->closedRange == TRUE)  // '-' is a literal?
          {
             C8bag_AddOne(cc, '-');                             // then it's a literal '-'. Add it to current class
             p->closedRange = FALSE;                            // If closed range then that is past now.
             p->esc = FALSE;                                    // and we have used the ESC.
             p->prevCh = '-';
          }
-         else if(p->prevCh == '-' || p->prevCh == '^')         // But previous char was not a letter/number whatever?
-            { return E_Fail; }                                 // so range is missing it's start -> fail
          else
             { p->range = TRUE; }                               // else we are specifying a range now; continue.
          break;
 
       case '^':                                       // ... Negation? (maybe)
-         if(p->prevCh == '[' && p->negate == FALSE && p->esc == FALSE)   // '^' right after '['? (not escaped, not already '^'ed)
+         if(p->range == TRUE)
+         {
+            p->range = FALSE;
+            p->closedRange = TRUE;                             // and mark that we closed it.
+
+            /* Add or remove range depending on 'p->negate'. Will fail if range is upside down
+               i.e 'newCh > 'hexascii' or if either of these is < 0.
+            */
+            if(FALSE == addOrRemoveRange(p, cc, p->prevCh, '^')) {
+               return E_Fail; }
+         }
+         else if(p->prevCh == '[' && p->negate == FALSE && p->esc == FALSE)   // '^' right after '['? (not escaped, not already '^'ed)
          {
             p->negate = TRUE;                                  // else we are negating now; continue.
             C8bag_Invert(cc);                                  // so invert the initial empty class to make a full one.
@@ -201,16 +221,26 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
          break;
 
       case '\\':                                      // ... Opens a pre-defined character class or an in-range escaped literal.
-         if(p->prevCh == '-' ||
-            (p->range == TRUE && *(src+1) != 'x'))              // But we are specifying a range?... can't put a pre-defined class within that..
-            { return E_Fail; }                                 // so fail
+         if(p->esc == TRUE)
+         {
+            addOrRemove(p, cc, '\\');
+            p->esc = FALSE;
+         }
+         else if(p->range == TRUE && *(src+1) != 'x')
+         {
+            p->range = FALSE;
+            p->closedRange = TRUE;
+            p->esc = FALSE;
+            if(FALSE == addOrRemoveRange(p, cc, p->prevCh, '\\')) {
+               return E_Fail; }
+         }
          else
             { p->esc = TRUE; }                                 // else mark the escape, to be followed, presumably, by the class specifier.
          break;
 
       default:                                        // ... some other letter/number whatever.
       {
-         if(p->hex.step > 0)                              // Parsing a hex e.g '\x4c'?
+         if(p->hex.step > 0)                                   // Parsing a hex e.g '\x4c'?
          {
             if (!IsHexASCII(newCh) )                           // But this next char isn't Hex ASCII?
                { return E_Fail; }                              // So fail rightaway
@@ -218,7 +248,7 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
             {
                if(p->hex.step == 1)                            // HexASCII for high nibble
                {
-                  p->hex._1stDigit = HexToNibble(newCh);              // read it.
+                  p->hex._1stDigit = HexToNibble(newCh);       // read it.
                   p->hex.step = 2;
                   break;
                }
@@ -236,7 +266,7 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
                      if(p->range == TRUE)                      // Were specifying a range?
                      {
                         p->range = FALSE;                      // then leave it now
-                        p->closedRange = TRUE;                   // and mark that we left.
+                        p->closedRange = TRUE;                 // and mark that we left.
 
                         /* Add or remove range depending on 'p->negate'. Will fail if range is upside down
                            i.e 'prevCh > 'hexascii' or if either of these is < 0.
@@ -246,11 +276,11 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
                      }
                      else
                      {
-                        p->hex.step = 0;                          // and we are done reading hex.
-                        p->prevCh = hexascii;                     // Record this hexascii, even though we added it. It may be the start of a range e.g '\x33-\x44'.
+                        p->hex.step = 0;                       // and we are done reading hex.
+                        p->prevCh = hexascii;                  // Record this hexascii, even though we added it. It may be the start of a range e.g '\x33-\x44'.
 
                         if(*(src+1) != '-')
-                           { addOrRemove(p, cc, hexascii); }      // So add 'hexascii' or remove it if it is negated.
+                           { addOrRemove(p, cc, hexascii); }   // So add 'hexascii' or remove it if it is negated.
                         else
                            { break; }
                      }
@@ -274,26 +304,29 @@ PUBLIC T_ParseRtn regexlt_classParser_AddCh(S_ParseCharClass *p, S_C8bag *cc, C8
             }
             else                                               // else it should be some 'escaped' class e.g '\D'
             {
-               C8 const *def;
-
-               if((def = getCharClassByKey(newCh)) != NULL)    // Is a legal class-specifier
-               {                                               // then will make a new class corresponding to the char
-                  S_ParseCharClass pc;                         // We are already inside a class parser; make a fresh private one.
-                  classParser_Init(&pc);
-                  if( classParser_AddDef(&pc, cc, def) == TRUE ) {   // Made the new class?
-                     p->prevCh = pc.prevCh;
-                     break; }                                  // success, continue
+               if(*(src+1) == '-')                             // Next char is a range?
+               {                                               // then, because a Char Class cannot open a range. Preceding '\\' must be a literal
+                  addOrRemove(p, cc, '\\');                    // So add '\\' now.
                }
-               return E_Fail;                                  // None of the above... Fail.
+               else                                            // else e.g '\d' a Char Class. Try to add it.
+               {
+                  C8 const *def;
+
+                  if((def = getCharClassByKey(newCh)) != NULL)    // Is a legal class-specifier
+                  {                                               // then will make a new class corresponding to the char
+                     S_ParseCharClass pc;                         // We are already inside a class parser; make a fresh private one.
+                     classParser_Init(&pc);
+                     if( classParser_AddDef(&pc, cc, def) == TRUE ) {   // Made the new class?
+                        p->prevCh = pc.prevCh;
+                        break; }                                  // success, leave 'default:' without doing 'p->prevCh = newCh'
+                  }
+                  return E_Fail;                                  // 'newCh' was not a Class Specifier OR could add the class it described.
+               }
             }
-         }
-         else if(p->prevCh == '[' && newCh == '.')             // Leading '.'?
-         {                                                     // means we start with everything and will subtract members
-            C8bag_Invert(cc);                                  // so invert the initial empty class to make a full one.
          }
          else if(p->range == TRUE) {                           // We were specifying a range?
             p->range = FALSE;                                  // then we close it now.
-            p->closedRange = TRUE;                               // and mark that we closed it.
+            p->closedRange = TRUE;                             // and mark that we closed it.
 
             /* Add or remove range depending on 'p->negate'. Will fail if range is upside down
                i.e 'newCh > 'hexascii' or if either of these is < 0.
