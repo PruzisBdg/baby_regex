@@ -153,9 +153,9 @@ PUBLIC T_RegexRtn RegexLT_Compile(C8 const *regexStr, void **progV)
             S_Program *prog = *progV;
 
             S_TryMalloc programLeaves[] = {
-               { (void**)&prog->chars.buf,    (U16)stats.charboxes    * sizeof(S_Chars) },    // Chars-Boxes
-               { (void**)&prog->instrs.buf,   (U16)stats.instructions * sizeof(S_Instr) },    // Instructions (list)
-               { (void**)&prog->classes.ccs,  (U16)stats.classes      * sizeof(S_C8bag) }};   // any Char-classes
+               { (void**)&prog->chSegs.buf,    (U16)stats.charboxes    * sizeof(S_CharSegs) },     // Chars-Boxes
+               { (void**)&prog->instrs.buf,   (U16)stats.instructions * sizeof(S_Instr) },         // Instructions (list)
+               { (void**)&prog->classes.ccs,  (U16)stats.classes      * sizeof(S_C8bag) }};        // any Char-classes
 
             if( getMemMultiple(programLeaves, RECORDS_IN(programLeaves)) == FALSE)   // Malloc program leaves?
                { return E_RegexRtn_OutOfMemory; }           // Some malloc() error.
@@ -166,7 +166,7 @@ PUBLIC T_RegexRtn RegexLT_Compile(C8 const *regexStr, void **progV)
                   for the compiler.
                */
                prog->classes.size = stats.classes;
-               prog->chars.size   = stats.charboxes;
+               prog->chSegs.size  = stats.charboxes;
                prog->instrs.size  = stats.instructions;
                prog->subExprs     = stats.subExprs;
 
@@ -179,7 +179,7 @@ PUBLIC T_RegexRtn RegexLT_Compile(C8 const *regexStr, void **progV)
 
                if(rtn != E_RegexRtn_OK)                     // Compile failed?
                {                                            // then free() 'prog' now; otherwise it's returned to caller.
-                  void *toFree[] = { prog->classes.ccs, prog->instrs.buf, prog->chars.buf };
+                  void *toFree[] = { prog->classes.ccs, prog->instrs.buf, prog->chSegs.buf };
                   safeFreeList(toFree, RECORDS_IN(toFree));
                   *progV = NULL;
                }
@@ -193,7 +193,7 @@ PUBLIC T_RegexRtn RegexLT_Compile(C8 const *regexStr, void **progV)
 
 PUBLIC T_RegexRtn RegexLT_FreeProgram(void *prog)
 {
-   void *toFree[] = { ((S_Program*)prog)->classes.ccs, ((S_Program*)prog)->instrs.buf, ((S_Program*)prog)->chars.buf };
+   void *toFree[] = { ((S_Program*)prog)->classes.ccs, ((S_Program*)prog)->instrs.buf, ((S_Program*)prog)->chSegs.buf };
    safeFreeList(toFree, RECORDS_IN(toFree));
    return E_RegexRtn_OK;
 }

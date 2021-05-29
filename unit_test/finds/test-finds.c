@@ -33,106 +33,6 @@ static void failwMsg(U16 tstNum, C8 const *msg) {
    printf("tst #%d\r\n   %s\r\n", tstNum, msg);
    TEST_FAIL(); }
 
-// -------------------------------- test_RightOperator --------------------------------------
-
-void test_RightOperator(void)
-{
-   typedef struct { C8 const *tstStr; C8 rtn; } S_Tst;
-
-   S_Tst const tsts[] = {
-      { "abc",    '$' },
-      { "a+",     '+' },
-      { "a?",     '?' },
-      { "a*",     '*' },
-      { "a{2}",   '{' },
-
-      // Escaped chars
-      { "\\a+",     '+' },
-      { "a\\b+",    'E' },
-      { "a\\\\+",   'E' },
-      { "a\\\\",    '$' },
-
-      { "a\\+",    '$' },
-      { "a\\?",    '$' },
-      { "a\\*",    '$' },
-      { "a\\{",    '$' },
-
-      // Post operator captures previous char.
-      { "ab+",     'E' },
-      { "ab?",     'E' },
-
-      { "ab*",     'E' },
-      { "ab{2}",   'E' },
-
-      { "a+b",     '+' },
-      { "ab+c",    'E' },
-
-      { "a(b)+",   'E' },
-      { "(a)b+",   'E' },
-
-      // Nested subs
-      { "(a(b))+", '+' },
-
-      // Post operator capture group.
-      { "(a)+",    '+' },
-      { "(a){3,4}",'{' },
-
-      // Escaped backslash.
-      { "a\\\\",    '$' },
-
-      // Subgroups
-      { "a(b)",   'E' },
-      { "a(b+)",   'E' },
-      { "aa(b)",  'E' },
-      { "(a)b",   'E' },
-      { "(a)bb",  'E' },
-      { "(a)",    '$' },
-
-      { "(\\d)",    '$' },
-      { "\\(\\d{3}", 'E' },
-
-      // Nesting
-      { "(ab(cd))", '$' },
-      { "(ab(cd))e", 'E' },
-      { "(ab(cd))e", 'E' },
-
-
-      // With char classes
-      { "[A-Z]bc",  '$' },
-      { "[A-Z]",    '$' },
-
-      { "[A-Z]+",   '+' },
-      { "ab[A-Z]+", 'E' },
-      { "ab[A-Z]",  '$' },
-
-      { "a[\\d]b",   '$' },
-
-      // Incompletes
-      { "a)b",    '$' },
-      { "a)b+",   'E' },
-      { "a)+",    '+' },
-   };
-
-   U8 i, fails; C8 rtn;
-
-   for(i = 0, fails = 0; i < RECORDS_IN(tsts); i++)
-   {
-      S_Tst const *t = &tsts[i];
-
-      if( (rtn = rightOperator( t->tstStr)) != t->rtn )
-      {
-         printf("right operator fail #%u: \"%s\" -> %c but got %c\r\n", i, t->tstStr, t->rtn, rtn);
-         fails++;
-      }
-   }
-
-   if(fails > 0)
-   {
-      TEST_FAIL();
-   }
-}
-
-
 /* ------------------------------ getMemCleared ---------------------------------- */
 
 #define _memclr(addr, size)  memset((addr), 0, (size_t)(size))
@@ -322,7 +222,7 @@ void test_Finds(void)
       // Regex            Test string        Result code           Matches (if any)
       //                                                      {how_many [start, len]..}
       // ----------------------------------------------------------------------------
-      //{ "fob_([\\d]{5,10})_([\\d]{1,3})\\.log", "fob_098765432_1.log",    E_RegexRtn_Match,  {3, {{0,19}, {4,9}, {14,1}}}             },       // The empty string is no-match
+      { "fob_([\\d]{5,10})_([\\d]{1,3})\\.log", "fob_098765432_1.log",    E_RegexRtn_Match,  {3, {{0,19}, {4,9}, {14,1}}}             },       // The empty string is no-match
 #if 1
       { "abc",          "",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
       { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
@@ -390,6 +290,8 @@ void test_Finds(void)
       { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "(414)-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,14}}}  },
       { "\\(?\\d{3}\\)?[ \\-]?\\d{3}[ \\-]?\\d{4}",    "414-777-9214 nn",  E_RegexRtn_Match,    {1, {{0,12}}}  },
 
+      //{ "(34){2}",          "2343456",        E_RegexRtn_Match,    {1, {{1,4}}}         },      // ******* Repeated capturing group should only snag the last '34'.
+
       // Explosive quantifier
       { "^(a+)*b",      "aaab",                 E_RegexRtn_Match,    {2, {{0,4},{0,3}}}},
 
@@ -430,15 +332,19 @@ void test_Finds(void)
 void test_IPAddr(void)
 {
    S_Test const tests[] = {
+      { "(34){2}",          "234343456",        E_RegexRtn_Match,    {1, {{1,4}}}         },
+//      { "(a{2}_){3}",        "aa_aa_aa_",       E_RegexRtn_Match,    {1, {{0,6}}}},
+//      { "([\\d]{1,3}\\.){3}[\\d]{1,3}",        "192.168.1.14",       E_RegexRtn_Match,    {1, {{0,12}}}},
+#if 0
       // Regex            Test string        Result code           Matches (if any)
       //                                                      {how_many [start, len]..}
       // ----------------------------------------------------------------------------
 
       // ---- Simple match - any of 1-3 digits for each byte.
-#if 0
       { "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",        "0.0.0.0",            E_RegexRtn_Match,    {1, {{0,7}}}},
       { "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",        "255.255.255.255",    E_RegexRtn_Match,    {1, {{0,15}}}},
       { "[\\d]{1,3}\\.[\\d]{1,3}\\.[\\d]{1,3}\\.[\\d]{1,3}",        "255.255.255.255",    E_RegexRtn_Match,    {1, {{0,15}}}},
+      { "[\\d]{1,3}\\.[\\d]{1,3}\\.[\\d]{1,3}\\.[\\d]{1,3}",        "192.168.1.14",       E_RegexRtn_Match,    {1, {{0,12}}}},
 
       // Fails, wrong number of internal digits
       { "[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}",        "255.255.255.",       E_RegexRtn_NoMatch,    {0, {}}   },
@@ -447,8 +353,9 @@ void test_IPAddr(void)
       // Disallow extra digits at each end.
       //{ "[^\\d][0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}[^\\d]",    "255.255.255.255",   E_RegexRtn_Match,    {1, {{0,15}}}},
       { "[^0-9][0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}[^0-9]",    "0255.255.255.255",   E_RegexRtn_NoMatch,    {0, {}}   },
+
+      //{ "([\\d]{1,3}\\.){3}[\\d]{1,3}",        "192.168.1.14",       E_RegexRtn_Match,    {1, {{0,12}}}},
 #endif
-      { "[^0-9][0-9]{1,3}\\.[0-9]{1,3}",        "123.4",    E_RegexRtn_NoMatch,    {0, {}}},
    };
 
    RegexLT_S_Cfg cfg = {

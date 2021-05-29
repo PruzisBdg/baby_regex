@@ -33,7 +33,7 @@
       'ab+c'      ->  E       '+' does not apply to 'a'
       '(ab)*c     -> '*'      '*' applies to the 1st subgroup.
       'dog|cat'   -> '|'      ('|' is right-associative, applies to all of 'dog'.
-      'a(dog|cat) ->  E       '|' does no apply to 'a'.
+      'a(dog|cat) ->  E       '|' does not apply to 'a'.
 */
 
 PRIVATE BOOL isPostOpCh(C8 ch)
@@ -82,7 +82,7 @@ PUBLIC C8 rightOperator(C8 const *rgx)
             }
             else {                                    // otherwise already in char-sequence.
                if( isPostOpCh(*(rp+1))) {             // Next char is a post-op, '+','*' etc?
-                  grpCnt++;	                          // then post-operator binds this char, so previous chars make one more char-group.
+                  grpCnt++;	                        // then post-operator binds this char, so previous chars make one more char-group.
                   if( *(rp+1) == '{') {               // That post-op is a repeat e.g '{3,4}'?
                      rp = toClosesRpt(rp+1); }}}      // then advance to the closing '}'.
             }
@@ -123,7 +123,9 @@ PUBLIC C8 rightOperator(C8 const *rgx)
                   else if(isPostOpCh(ch)) {           // else '+','*' etc?
                      return grpCnt > 1                // then, if there's at least one group between rgx[0] and '+'?
                         ? 'E'                         // rgx[0] is 'free'; it's not bound to the post-operator
-                        : ch;                         // else rgx[0] is bound to the post-operator, so return the char '+','*' etc.
+                        : ch == '}'                   // else rgx[0] is bound to the post-operator: if that post-op repeat count e.g {3,5}?
+                           ? '{'                      // then return the opening '{'
+                           : ch;                      // else return the single-char pots-op, '+','*' etc.
                   }
                   else {                              // else none of the above.
                      if(!inCh) {                      // Starting char sequence?

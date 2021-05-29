@@ -17,11 +17,11 @@
 
 // -------------------------------- main --------------------------------------
 
-extern void test_CharClass(void);
+extern void test_IPAddr(void);
 
 int main()
 {
-   test_CharClass();
+   test_IPAddr();
    return 1;
 }
 

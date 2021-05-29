@@ -135,12 +135,19 @@
 		<Unit filename="../unit_test/char_class/test-char_class.c">
 			<Option compilerVar="CC" />
 			<Option target="Unity_TDD" />
-			<Option target="Debug_Console" />
 		</Unit>
 		<Unit filename="../unit_test/finds/finds.mak">
 			<Option target="Unity_TDD" />
 		</Unit>
 		<Unit filename="../unit_test/finds/test-finds.c">
+			<Option compilerVar="CC" />
+			<Option target="Unity_TDD" />
+			<Option target="Debug_Console" />
+		</Unit>
+		<Unit filename="../unit_test/right_operator/right_op.mak">
+			<Option target="Unity_TDD" />
+		</Unit>
+		<Unit filename="../unit_test/right_operator/test-right_op.c">
 			<Option compilerVar="CC" />
 			<Option target="Unity_TDD" />
 		</Unit>

@@ -97,7 +97,7 @@ typedef struct {
 typedef U8 T_OpCode;       // Opcodes in compiled regex instructions
 
 
-/* These are opcodes & labels for both character lists 'S_Chars' and compiled regex
+/* These are opcodes & labels for both character lists 'S_CharSegs' and compiled regex
    instructions 'S_Instr'. 'Null' and 'Match' are common to both types.
 */
 enum {
@@ -120,39 +120,37 @@ static inline BOOL isAnchor(C8 ch)
 static inline BOOL opCode_HoldsChars(T_OpCode op)
    { return op == OpCode_Chars || op == OpCode_EscCh || op == OpCode_Class || op == OpCode_Anchor; }
 
-// A segment of chars in the source regex.
+// Character elements or segments from the Regex expression
 typedef U8 T_CharSegmentLen;
-typedef struct {C8 const *start; T_CharSegmentLen len; } S_CharSegment;
-typedef struct { C8 ch; } S_EscChar;
-typedef struct { C8 ch; } S_Anchor;
+typedef struct {C8 const *start; T_CharSegmentLen len; } S_Literals;    // (Reference to) 'len' literals at 'start' in the Regex e.g 'abc'.
+typedef struct { C8 ch; } S_EscChar;                                    // Escaped Regex char e.g '\{' in the Regex -> '{'
+typedef struct { C8 ch; } S_Anchor;                                     // e.g '$'.
 
-typedef union {                     // One of... from the match string.
-   S_CharSegment chars;             //    a char segment (start, numChars)
+typedef union {                     // Some character-element in the Regex expression, i.e not a control such as '+' or '{3,7}'. One of...
+   S_Literals    literals;          //    a segment of literals within the source Regex e.g 'abcd'
    S_EscChar     esc;               //    an escaped char e.g \n, \t
-   S_Anchor      anchor;
+   S_Anchor      anchor;            //    e.g '$'
    S_C8bag       *charClass;        //    a char class e.g [0-8ab]
-} U_Payload;
-
+} U_CharSeg;
 
 typedef struct  {                   // Holds either a char segment, escaped char or a char class.
-   T_OpCode    opcode;              // 'OpCode_Chars', 'OpCode_EscCh' or 'OpCode_Class', dpending what's in 'payload'.
-   U_Payload   payload;
-} S_Chars;
+   T_OpCode    opcode;              // 'OpCode_Chars', 'OpCode_EscCh' or 'OpCode_Class', depending what's in 'payload'.
+   U_CharSeg   payload;
+} S_CharSegs;
 
 typedef struct {                    // A box of one or more character segments or classes in the match string.
-   S_Chars     *segs;               // The char segments and char classes.
+   S_CharSegs  *segs;               // The char segments and char classes.
    T_InstrIdx  bufSize,             // Number of buf[] malloced.
                put,                 // when filling 'segs'.
-               len;                 // Number of chars-segments in 'buf'
+               numSegs;             // Number of chars-segments in 'buf'
    BOOL        opensGroup,
                closesGroup;
    BOOL        eatUntilMatch;       // Eat source string until 1st match with chars or class in 'buf'[0].
 } S_CharsBox;
 
-
 typedef struct {                    // A (compiled) instruction. Contains:
    T_OpCode       opcode;           // an eOpCode e.g OpCode_Chars, OpCode_Jmp, OpCode_Match
-   S_CharsBox     charBox;          // A box of one or more character segments or classes in the match string.
+   S_CharsBox     charBox;          // A box of one or more character Segments or character Classes in the match string.
    T_InstrIdx     left, right;      // 'left' is the  destination for a  '_Jmp'; for '_Split' it's both 'left' and 'right'.
    S_RepeatSpec   repeats;          // Match zero of more repeats of 'charBox'
    BOOL           opensGroup,       //  This instruction opens of closes a group.
@@ -160,8 +158,8 @@ typedef struct {                    // A (compiled) instruction. Contains:
 } S_Instr;
 
 typedef struct {                    // List of character-segments and char-classes from the match string...
-   S_Chars     *buf;                // ...which are here
-   T_InstrIdx  size,                // Size of S_Chars malloced() based on pre-scan.
+   S_CharSegs  *buf;                // ...which are here
+   T_InstrIdx  size,                // Size of S_CharSegs malloced() based on pre-scan.
                put;                 // 'put' to add another segment / number of S_Instr in 'buf'.
 } S_CharsList;
 
@@ -175,7 +173,7 @@ typedef struct {                    // List of instructions...
 // A compiled regex is...
 typedef struct {
    S_InstrList    instrs;           // Instructions to execute, terminated by 'Match'
-   S_CharsList    chars;            // One or more lists of chars and char classes, each attached to a 'Char' instruction, terminated by 'Match'.
+   S_CharsList    chSegs;           // One or more lists of chars and char classes, each attached to a 'Char' instruction, terminated by 'Match'.
    S_ClassesList  classes;          // Zero or more character classes, each a part or all of a S_CharsList
    U16            subExprs;         // 1 + number of possible sub-matches, Used to size the match-list.
 } S_Program;

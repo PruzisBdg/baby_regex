@@ -84,7 +84,7 @@ PRIVATE BOOL notaWordBoundary(C8 const *start, C8 const *src)
 
 /* ------------------------------- matchCharsList --------------------------------------
 
-   Compare the S_Chars[] list 'chs' against 'in'. Return TRUE if there's a full match
+   Compare the S_CharSegs[] list 'chs' against 'in'. Return TRUE if there's a full match
    before a '\0' or 'end'.
 
    'start' should the beginning of the WHOLE input string; used to match the '^' anchor.
@@ -94,7 +94,7 @@ PRIVATE BOOL notaWordBoundary(C8 const *start, C8 const *src)
 
     Returns with 'in' at the 1st char AFTER the segment which matches 'chs'.
 */
-PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 const *end, T_CaseRule *cr)
+PRIVATE BOOL matchCharsList(S_CharSegs *chs, C8 const **in, C8 const *start, C8 const *end, T_CaseRule *cr)
 {
    C8 ch;
 
@@ -119,10 +119,10 @@ PRIVATE BOOL matchCharsList(S_Chars *chs, C8 const **in, C8 const *start, C8 con
 
             case OpCode_Chars:            // --- Some segment of the source regex string. Compare char-by-char
 
-               for(i = 0; i < chs->payload.chars.len; i++, (*in)++)  // Until the end of the regex segment
+               for(i = 0; i < chs->payload.literals.len; i++, (*in)++)  // Until the end of the regex segment
                {
                   ch = **in;
-                  if(!matchedRegexCh(chs->payload.chars.start[i], ch, *cr))  // Input char did not match segment char?
+                  if(!matchedRegexCh(chs->payload.literals.start[i], ch, *cr))  // Input char did not match segment char?
                      { return FALSE; }                                  // Then this path has failed
                   else if(ch == '\0')                                   // End of input string?
                      { return FALSE; }                                  // then we exhausted the input before exhausting the regex-segment; Fail

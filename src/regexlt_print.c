@@ -109,21 +109,22 @@ PRIVATE void printAnyRepeats(S_RepeatSpec const *rpts)
             { dbgPrint(" {%d,%d}", rpts->min, rpts->max); }          // else a range e.g {3,6}
       }
       else if(rpts->always == TRUE) {
-         dbgPrint(" {*}", rpts->min);
-      }
+         dbgPrint(" {*}"); }
+      else {
+         dbgPrint(" {_}"); }
    }
 }
 
 /* ------------------------------- printCharsBox ----------------------------------------
 
-   Print the one or more 'S_Chars' elements of 'cb' on one line. Each element may be a
+   Print the one or more 'S_CharSegs' elements of 'cb' on one line. Each element may be a
    segment of the regex, a single escaped char (of the regex) or a character class
    (defined in the regex).
 */
 PRIVATE void printCharsBox(S_CharsBox const *cb, S_RepeatSpec const *rpts)
 {
    T_InstrIdx  idx;
-   S_Chars     *seg = cb->segs;
+   S_CharSegs     *seg = cb->segs;
 
    for(idx = 0; seg->opcode != OpCode_Null && idx < 10; idx++, seg++)         // Until all box items, including OpCode_EndCBox, have been printed.
    {
@@ -147,8 +148,8 @@ PRIVATE void printCharsBox(S_CharsBox const *cb, S_RepeatSpec const *rpts)
 
          switch(seg->opcode) {                                                // This segment of the CharsBox is? ...
             case OpCode_Chars:  {                                             //    ... a (reference to) a piece of the regex.
-               U8 numChars = MinU8(seg->payload.chars.len, _PrintBufSize-1);  // Will copy up to as many chars as will fit in format buffer.
-               memcpy(buf, seg->payload.chars.start, numChars);               // Copy regex segment into 'buf'
+               U8 numChars = MinU8(seg->payload.literals.len, _PrintBufSize-1);  // Will copy up to as many chars as will fit in format buffer.
+               memcpy(buf, seg->payload.literals.start, numChars);               // Copy regex segment into 'buf'
                buf[numChars] = '\0';                                          // Make into a string.
                dbgPrint("\"%s\"", buf);                                       // and print.
                break; }
@@ -194,7 +195,7 @@ PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxC
    #define _PrintBufSize 100
    C8          buf[_PrintBufSize];
    T_InstrIdx  idx;
-   S_Chars     *seg = cb->segs;
+   S_CharSegs     *seg = cb->segs;
 
    if(maxChars == 0)
    {
@@ -227,13 +228,13 @@ PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxC
 
          switch(seg->opcode) {                                                         // This segment is a...
             case OpCode_Chars: {                                              // ...a piece of the source regex.
-               U8 segChars = MinU8(seg->payload.chars.len, _PrintBufSize-1);           // Will copy no more chars from segment than we can buffer.
+               U8 segChars = MinU8(seg->payload.literals.len, _PrintBufSize-1);        // Will copy no more chars from segment than we can buffer.
 
                if(charCnt + segChars + 2 > maxChars)                                   // What we want to copy will not fit in 'out'?
                   {  goto printCBox_Done; }                                            // then quit with what we printed so far.
                else
                {
-                  memcpy(buf, seg->payload.chars.start, segChars);                     // Otherwise copy into 'buf'
+                  memcpy(buf, seg->payload.literals.start, segChars);                  // Otherwise copy into 'buf'
                   buf[segChars] = '\0';
                   sprintf(out, "'%s'", buf);                                           // and print to 'out', enclosed in '<>'.
                   charCnt += (segChars+2);
@@ -278,8 +279,8 @@ PUBLIC U16 regexlt_sprintCharBox_partial(C8 *out, S_CharsBox const *cb, U16 maxC
                   if(maxChars > charCnt+3)
                   {
                      listClass[maxChars-charCnt] = '\0';
-                     sprintf(out, "[%s..", listClass);                                     // else append to 'out'
-                     charCnt += (len + 3);                                                // We added class chars plus brackets.
+                     sprintf(out, "[%s..", listClass);                                 // else append to 'out'
+                     charCnt += (len + 3);                                             // We added class chars plus brackets.
                      out += (len+3);
                   }
                   goto printCBox_Done;                                                 // then quit with what we printed so far.

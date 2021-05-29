@@ -128,7 +128,7 @@ PRIVATE BOOL bumpIfEmpty(S_CharsBox *cb)
             These are put into a character class which is linked to a (new) OpCode_Class.
 
    Return FALSE if 'ch' isn't one of the above. If success, then 'idx' is advanced
-   to the next S_Chars slot, which is written to 'OpCode_Null'
+   to the next S_CharSegs slot, which is written to 'OpCode_Null'
 */
 
 PRIVATE C8 const escapedChars[] = "\\|.*?{}()^$";
@@ -139,22 +139,22 @@ PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_CharsBox *cb, C8 ch)
    C8 const    *preBakedClass;
    BOOL        rtn = FALSE;                           // Until we succeed below.
 
-   S_Chars *sg = cb->segs;
+   S_CharSegs *sg = cb->segs;
 
-   if(sg[cb->put].opcode != OpCode_Null)                                         // Not already on an empty 'S_Chars'.
+   if(sg[cb->put].opcode != OpCode_Null)                                         // Not already on an empty 'S_CharSegs'.
       { wrNextSeg(cb, OpCode_Null); }                                            // then advance to next slot. Make sure it's clean; it will likely be filled below.
 
    if(strchr(escapedChars, ch) != NULL)                                          // Literal of a regex control char?
    {
       sg[cb->put].opcode = OpCode_EscCh;                                         // will go in this next sg[cb->put]
       sg[cb->put].payload.esc.ch = ch;                                           // the char s this
-      rtn = wrNextSeg(cb, OpCode_Null);                                          // Clear the next S_Chars slot (being tidy)
+      rtn = wrNextSeg(cb, OpCode_Null);                                          // Clear the next S_CharSegs slot (being tidy)
    }
    else if(strchr(escapedAnchors, ch) != NULL)                                   // (backslashed) regex anchor?
    {
       sg[cb->put].opcode = OpCode_Anchor;                                        // will go in this next sg[cb->put]
       sg[cb->put].payload.anchor.ch = ch;                                        // the char s this
-      rtn = wrNextSeg(cb, OpCode_Null);                                          // Clear the next S_Chars slot (being tidy)
+      rtn = wrNextSeg(cb, OpCode_Null);                                          // Clear the next S_CharSegs slot (being tidy)
    }
    else if((preBakedClass = getCharClassByKey(ch)) != NULL)                      // else a predefined char class e.g '\w'
    {
@@ -165,7 +165,7 @@ PRIVATE BOOL handleEscapedNonWhtSpc(S_ClassesList *cl, S_CharsBox *cb, C8 ch)
                                                                                  // Success adding char class? (should be, the class was pre-baked by us)
          if( classParser_AddDef(&parseClass, sg[cb->put].payload.charClass, preBakedClass) == TRUE ) {
             sg[cb->put].opcode = OpCode_Class;                                   // then label wot we made.
-            rtn = wrNextSeg(cb, OpCode_Null); }}                                 // Clear the next S_Chars slot (being tidy). Return success or fail.
+            rtn = wrNextSeg(cb, OpCode_Null); }}                                 // Clear the next S_CharSegs slot (being tidy). Return success or fail.
    }
    return rtn;
 }
@@ -205,7 +205,7 @@ PRIVATE BOOL gotAtLeast1Char(S_CharsBox const *cb)
       cb->put > 0 ||                               // 'put' advanced so, already completed a chars-segment (which must have at least 1 char)? OR
       (
          cb->segs[0].opcode == OpCode_Chars &&     // If 1st segment is a chars-list? AND
-         cb->segs[0].payload.chars.len > 0         // we already have at least 1 char in that list? (we should, otherwise it would be OpCode_Null)
+         cb->segs[0].payload.literals.len > 0         // we already have at least 1 char in that list? (we should, otherwise it would be OpCode_Null)
       );
 }
 
@@ -234,10 +234,10 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
    S_ParseCharClass parseClass;
    T_ParseRtn rtn;
 
-   S_Chars * sgs = cb->segs;
+   S_CharSegs * sgs = cb->segs;
    cb->put = 0;                           // Fill 'cb' starting at cb->buf[0].
    sgs[cb->put].opcode = OpCode_Null;      // Until we fill it this 1st segment has no opcode, and...
-   sgs[cb->put].payload.chars.len = 0;     // and, for a chars-segment, no chars either.
+   sgs[cb->put].payload.literals.len = 0;     // and, for a chars-segment, no chars either.
 
    /* If got a '(' rightaway. then this chars-list either opens a subgroup or will be an
       an entire subgroup.
@@ -285,9 +285,9 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                   case '{':      // Opening a repeat specifier (for the previous char/class/group).
                   case '(':
                      if( !bumpIfEmpty(cb) )                             // If necessary, advance to an open 'Null' char-box.
-                        { return FALSE; }                               // Return fail if didn't count and malloc() enuf S_Chars in prescan.
+                        { return FALSE; }                               // Return fail if didn't count and malloc() enuf S_CharSegs in prescan.
                      sgs[cb->put].opcode = OpCode_Match;                // Write a '_Match' terminator to this empty box.
-                     cb->len = cb->put+1;
+                     cb->numSegs = cb->put+1;
                      return TRUE;
 
                   case ']':      // Char class close without open
@@ -302,15 +302,15 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                          isaRepeat( toClosesClass(*regexStr))+1 )    // ...repeat operator e.g follows this e.g [0-8]{1,4}.
                      {
                         if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
-                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_Chars in prescan.
+                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_CharSegs in prescan.
                         sgs[cb->put].opcode = OpCode_Match;          // ...and terminate the CBox.
-                        cb->len = cb->put+1;
+                        cb->numSegs = cb->put+1;
                         return TRUE;                                 // return the new Chars-Box WITHOUT advancing '*regexStr'...
                      }
                      else
                      {
                         if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
-                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_Chars in prescan.
+                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_CharSegs in prescan.
                         sgs[cb->put].opcode = OpCode_Class;          // ...(which will) hold a character class.
 
                         if( (sgs[cb->put].payload.charClass = CharClass_New(cl)) == NULL  )    // Made a fresh  empty char class into char-box payload?
@@ -323,7 +323,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                   case '^':
                   case '$':
                      if( !bumpIfEmpty(cb) )                          // If necessary, advance to an open 'Null' char-box.
-                        { return FALSE; }                            // Return fail if didn't count and malloc() enuf S_Chars in prescan.
+                        { return FALSE; }                            // Return fail if didn't count and malloc() enuf S_CharSegs in prescan.
                      sgs[cb->put].opcode = OpCode_Anchor;            // ...(which will) hold an anchor.
                      sgs[cb->put].payload.anchor.ch = ch;            // This is the anchor char;
                      if( !wrNextSeg(cb, OpCode_Null))                // Advance and clean out next char-segment.
@@ -339,9 +339,9 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                          isaRepeat( (*regexStr)+2 ))                 // ...repeat operator follows this e.g '\d+'.
                      {                                               // then repeat operator applies just to the escaped \\. Finish the Chars-Box we have so far....
                         if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
-                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_Chars in prescan.
+                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_CharSegs in prescan.
                         sgs[cb->put].opcode = OpCode_Match;          // ...and terminate the CBox.
-                        cb->len = cb->put+1;
+                        cb->numSegs = cb->put+1;
                         return TRUE;                                 // return the new Chars-Box WITHOUT advancing '*regexStr'...
                      }                                               // ...the escape, e.g '\d' will go into its own Box, following a '_Split' which holds it's repeat count..
                      else                                            // else we add to the current Chars-Box
@@ -356,7 +356,7 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                      if(!isprint(ch))                                // Non-printable?
                      {                                               // this means it's a whitespace ASCII code, translated by translateEscapedWhiteSpace() above
                         if( !bumpIfEmpty(cb) )                       // If necessary, advance to an open 'Null' char-box.
-                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_Chars in prescan.
+                           { return FALSE; }                         // Return fail if didn't count and malloc() enuf S_CharSegs in prescan.
 
                         sgs[cb->put].opcode = OpCode_EscCh;          // and make an EscCh instruction
                         sgs[cb->put].payload.esc.ch = ch;            // Put ASCII code in 'OpCode_EscCh'.
@@ -378,19 +378,19 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
                            {                                         // then finish the Box we have so far.
                               if( !wrNextSeg(cb, OpCode_Match))      // Add 'Match' terminator. No?
                                  {return FALSE; }                    // cuz prescan did't reserve enuf heap. Compile fails.
-                              cb->len = cb->put+1;                   // else success. CBox length is now this.
+                              cb->numSegs = cb->put+1;               // else success. CBox length is now this.
                               return TRUE;                           // '*regexStr' is not advanced; so current char will be pending and go into it's own Box.
                            }
                            else                                      // else next char is not a repeat-operator.
                            {
-                              sgs[cb->put].payload.chars.len++;      // So add current char to segment; by incrementing segment length.
+                              sgs[cb->put].payload.literals.len++;   // So add current char to segment; by incrementing segment length.
                            }
                         }
                         else                                         // else this opcode is Null, meaning empty.
                         {
-                           sgs[cb->put].opcode = OpCode_Chars;            // so start a new chars segment in it.
-                           sgs[cb->put].payload.chars.start = *regexStr;  // Segment starts here.
-                           sgs[cb->put].payload.chars.len = 1;            // Just 1 the current char so far.
+                           sgs[cb->put].opcode = OpCode_Chars;                // so start a new chars segment in it.
+                           sgs[cb->put].payload.literals.start = *regexStr;   // Segment starts here.
+                           sgs[cb->put].payload.literals.len = 1;             // Just 1 the current char so far.
                         }
                      }
                }
@@ -433,13 +433,23 @@ PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
 PRIVATE void clearRepeats(S_RepeatSpec *r) {r->min = r->max = 0; r->cntsValid = FALSE; r->always = FALSE; }
 
 PRIVATE S_CharsBox const emptyCharsBox =
-   {.segs = NULL, .put = 0, .len = 0, .opensGroup = FALSE, .closesGroup = FALSE, .eatUntilMatch = FALSE };
+   {.segs = NULL, .put = 0, .numSegs = 0, .opensGroup = FALSE, .closesGroup = FALSE, .eatUntilMatch = FALSE };
 
-// -------- Room to add another instruction to pre-allocated instruction list.
+// -------- Room to append another instruction to pre-allocated instruction list.
 PRIVATE BOOL mayAppendInstr(S_Program const *p)
    { return p->instrs.put < p->instrs.size; }
 
+/* -------- May insert or append instruction to existing list 'at'....
 
+   Return FALSE if 'at' is beyond existing list OR 'at' appends to list but list is full.
+*/
+PRIVATE BOOL mayInsertInstr(S_Program const *p, T_InstrIdx at) {
+   return
+      at < p->instrs.put ||                                          // Insert amid existing instructions? OR
+      (at == p->instrs.put && p->instrs.put < p->instrs.size); }     // Append AND there's room to append?
+
+
+// ------------------------------------------------------------------------------------------------
 PRIVATE BOOL addNOP(S_Program *p)
 {
    if(mayAppendInstr(p)) {
@@ -454,21 +464,47 @@ PRIVATE BOOL addNOP(S_Program *p)
    return FALSE;
 }
 
+// ------------------------------------------------------------------------------------------------
 PRIVATE BOOL addSplitAbs(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbsLeft, T_InstrIdx jmpAbsRight)
 {
-   S_Instr *ins = &p->instrs.buf[at];
+   if(mayInsertInstr(p, at))
+   {
+      S_Instr *ins = &p->instrs.buf[at];
 
-   ins->opcode = OpCode_Split;
-   ins->charBox = emptyCharsBox;
-   ins->left  = jmpAbsLeft;
-   ins->right = jmpAbsRight;
-   clearRepeats(&ins->repeats);
+      ins->opcode = OpCode_Split;
+      ins->charBox = emptyCharsBox;
+      ins->left  = jmpAbsLeft;
+      ins->right = jmpAbsRight;
+      clearRepeats(&ins->repeats);
 
-   if(at == p->instrs.put)
-      { p->instrs.put++; }
-   return TRUE;
+      if(at == p->instrs.put)                // Appended 'Split'?
+         { p->instrs.put++; }                // then bump 'put'
+      return TRUE;
+   }
+   return FALSE;                             // 'at' > 'put' OR no room to append. Fail!
 }
 
+// ------------------------------------------------------------------------------------------------
+PRIVATE BOOL addSplitAbs_wRepeats(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbsLeft, T_InstrIdx jmpAbsRight, S_RepeatSpec const *r)
+{
+   if(mayInsertInstr(p, at))
+   {
+      S_Instr *ins = &p->instrs.buf[at];
+
+      ins->opcode = OpCode_Split;
+      ins->charBox = emptyCharsBox;
+      ins->left  = jmpAbsLeft;
+      ins->right = jmpAbsRight;
+      ins->repeats = *r;
+
+      if(at == p->instrs.put)                // Appended 'Split'?
+         { p->instrs.put++; }                // then bump 'put'
+      return TRUE;
+   }
+   return FALSE;                             // 'at' > 'put' OR no room to append. Fail!
+}
+
+// ------------------------------------------------------------------------------------------------
 PRIVATE BOOL addSplit(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
 {
    if(mayAppendInstr(p)) {
@@ -477,6 +513,7 @@ PRIVATE BOOL addSplit(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
 }
 
 
+// ------------------------------------------------------------------------------------------------
 PRIVATE BOOL addSplit_wRepeats(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight, S_RepeatSpec const *r)
 {
    if(mayAppendInstr(p)) {
@@ -492,36 +529,33 @@ PRIVATE BOOL addSplit_wRepeats(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight, S_
    return FALSE;
 }
 
+// ------------------------------------------------------------------------------------------------
 PRIVATE BOOL addSplit_wMore(S_Program *p, S16 jmpRelLeft, S16 jmpRelRight)
 {
-   if(mayAppendInstr(p)) {
-      S_Instr *ins = &p->instrs.buf[p->instrs.put];
+   return addSplit_wRepeats(p, jmpRelLeft, jmpRelRight, &(S_RepeatSpec){.cntsValid = FALSE, .always = TRUE});
+}
 
-      ins->opcode = OpCode_Split;
+// ------------------------------------------------------------------------------------------------
+PRIVATE BOOL addJumpAbs(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbs)
+{
+   if(mayInsertInstr(p, at))
+   {
+      S_Instr *ins = &p->instrs.buf[at];
+
+      ins->opcode = OpCode_Jmp;
       ins->charBox = emptyCharsBox;
-      ins->left  = U16plusS16_toU16(p->instrs.put, jmpRelLeft);
-      ins->right = U16plusS16_toU16(p->instrs.put, jmpRelRight);
-      ins->repeats = (S_RepeatSpec){.cntsValid = FALSE, .always = TRUE};
-      p->instrs.put++;
-      return TRUE; }
+      ins->left = jmpAbs;
+      ins->right = p->instrs.put;
+      clearRepeats(&ins->repeats);
+
+      if(at == p->instrs.put)          // Appended to existing instructions list?
+         { p->instrs.put++; }          // then bump 'put'.
+      return TRUE;
+   }
    return FALSE;
 }
 
-PRIVATE BOOL addJumpAbs(S_Program *p, T_InstrIdx at, T_InstrIdx jmpAbs)
-{
-   S_Instr *ins = &p->instrs.buf[at];
-
-   ins->opcode = OpCode_Jmp;
-   ins->charBox = emptyCharsBox;
-   ins->left = jmpAbs;
-   ins->right = p->instrs.put;
-   clearRepeats(&ins->repeats);
-
-   if(at == p->instrs.put)
-      { p->instrs.put++; }
-   return TRUE;
-}
-
+// ------------------------------------------------------------------------------------------------
 PRIVATE BOOL addJump(S_Program *p, S16 jmpRel)
 {
    if(mayAppendInstr(p))
@@ -529,7 +563,7 @@ PRIVATE BOOL addJump(S_Program *p, S16 jmpRel)
    return FALSE;
 }
 
-
+// ------------------------------------------------------------------------------------------------
 PRIVATE BOOL addFinalMatch(S_Program *p)
 {
    if(mayAppendInstr(p)) {
@@ -566,7 +600,7 @@ PRIVATE BOOL attachCharBox_wRepeats(S_Program *p, S_CharsBox *cb, S_RepeatSpec c
 {
    if(cb != NULL)                                        // 'cb' exists?
    {
-      if(cb->len != 0)                                   // 'cb' has content?
+      if(cb->numSegs != 0)                               // 'cb' has content?
       {
          if(mayAppendInstr(p) == FALSE)
          {
@@ -595,9 +629,9 @@ PRIVATE BOOL attachCharBox_wRepeats(S_Program *p, S_CharsBox *cb, S_RepeatSpec c
                { ins->closesGroup = TRUE; }
 
             p->instrs.put++;                                // Advance 'Put' to next instruction
-            p->chars.put += cb->len;                        // Also bump 'put' for the chars-group store to next free.
+            p->chSegs.put += cb->numSegs;                    // Also bump 'put' for the chars-group store to next free.
 
-            cb->len = 0;                                    // Empty 'cb' so it won't be reused by a later attachCharBox().
+            cb->numSegs = 0;                                // Empty 'cb' so it won't be reused by a later attachCharBox().
          }
       }
    }
@@ -664,7 +698,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
    BOOL gotCharBox = FALSE;
 
    prog->instrs.put = 0;               // Zero 'put's for the instruction and character buffers.
-   prog->chars.put = 0;
+   prog->chSegs.put = 0;
    prog->classes.put = 0;
    C8 firstOp = 0;
 
@@ -672,7 +706,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
       to check we don't overrun the malloc(), in case the pre-scan under-counted the number of
       Chars-segments.
    */
-   S_CharsBox cb = {.segs = prog->chars.buf, .bufSize = prog->chars.size, .len = 0 };
+   S_CharsBox cb = {.segs = prog->chSegs.buf, .bufSize = prog->chSegs.size, .numSegs = 0 };
 
    S_RepeatSpec   rpt;
    T_InstrIdx     rightFork;
@@ -721,7 +755,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                break;
 
             case '*':                                 // --- Zero or more
-               if(cb.len == 0) {                            // No CBox to add? (was closed out by a preceding group)
+               if(cb.numSegs == 0) {                        // No CBox to add? (was closed out by a preceding group)
                   if(!addSplit_wMore(prog, +1, +2)) {       // Either try next JMP or skip it
                      return FALSE; }}                       // Couldn't add; Bail!
                else {                                       // else there is a CBox
@@ -780,12 +814,15 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                }
                else                                         // else got a repeat specifier intp 'rpt'
                {
-                  if(!addSplit_wRepeats(prog, +1, +3, &rpt)) { // Write a 'Split' ('zero-or-more') with 'rpt' attached.
-                     return FALSE; }                        // Couldn't add; Bail!
+                  if( (m = nops_Pop()) != _NotANOP)
+                     { addSplitAbs_wRepeats(prog, m, m+1, prog->instrs.put+2, &rpt); } // so fill that NOP; either try succeeding Chars-Boxes or skip them.
+                  else {
+                     if(!addSplit_wRepeats(prog, +1, +3, &rpt)) { // Write a 'Split' ('zero-or-more') with 'rpt' attached.
+                        return FALSE; }}                        // Couldn't add; Bail!
 
                   // If e.g '(ab{3,5})' then the ')' closes the group which started at the preceding CBox.
-                  if(*rgxP == ')')
-                     {cb.closesGroup = TRUE;}
+                  if(*rgxP == ')') {
+                     cb.closesGroup = TRUE;}
 
                   /* Attach the CBox, but also clone the repeat-specifier which was placed in the preceding
                      Split. When executing the compiled regex (regexlt_run.c/runOnce()) if the CBox has no
@@ -823,8 +860,8 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                }
 
                cb = emptyCharsBox;                          // Make a new S_CharsBox for fillCharBox() to fill.
-               cb.segs = &prog->chars.buf[prog->chars.put];  // Give it the next free space from what was malloced for S_CharsBox[]
-               cb.bufSize = prog->chars.size - prog->chars.put;
+               cb.segs = &prog->chSegs.buf[prog->chSegs.put];  // Give it the next free space from what was malloced for S_CharsBox[]
+               cb.bufSize = prog->chSegs.size - prog->chSegs.put;
 
                segStart = rgxP;                             // Mark start of this segment; we will
 
@@ -834,19 +871,20 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                   we reach the close ')' for this open. Then we can fill the Split to execute or bypass
                   everything between the '(' and the ')'.
                */
+#if 1
                if(*rgxP == '(')                                // Next chars segment starts a group? ... which may have multiple sub-clauses.
                {                                               // If next operator is '|' or '?' then we must leave a placegolder for a 'Split'...
                   C8 ch = rightOperator(rgxP);
-                  if(ch == '|' || ch == '?')                   // Next operator (somewhere to the right) is '|' or '?'?
+                  if(ch == '|' || ch == '?' || ch == '{')                   // Next operator (somewhere to the right) is '|' or '?'?
                   {
                      if(nops_Push(prog->instrs.put) == FALSE)  // then push a mark for this this spot.
                         { return FALSE; }                      // Couldn't push? Fail.
                      else
-                        { if(!addNOP(prog)) {                  // and reserve a slot ofter the 'SPlit' which be inserted when we reach the '|'.
+                        { if(!addNOP(prog)) {                  // and reserve a slot ofter the 'Split' which be inserted when we reach the '|'.
                            return FALSE; }}
                   }
                }
-
+#endif
                if( fillCharBox(&prog->classes, &cb, &rgxP) == FALSE)   // Got (contiguous) chars into 'cb'?
                {
                   return FALSE;                                // No, parse error.. Fail
@@ -876,7 +914,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                                           '.*def'  vs 'abcdefg'
                      Here the wildcard matches 'abc' and the match starts at 'a', not 'd'.
                   */
-                  if( (prog->instrs.put == 0 && *segStart != '^') ||    // 1st char AND it's not an anchor? OR
+                  if( (prog->chSegs.put == 0 && *segStart != '^') ||    // This is 1st char (segment) AND char is not an anchor? OR
                       (
                         rightOperator(segStart) == '|' &&         // operator to right is alternation? AND...
                         firstOp == '|' &&                         // ... this '|' was not preceded by any different operator? AND
@@ -912,7 +950,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                   if(eatYet == TRUE) {
                      eatYet = FALSE;
                      cb.eatUntilMatch = TRUE; }
-
+#if 0
                   if(cb.opensGroup)                               // This CharBox opens a subgroup?
                   {
                      C8 ch = rightOperator(rgxP);
@@ -925,7 +963,7 @@ PUBLIC BOOL regexlt_compileRegex(S_Program *prog, C8 const *regexStr)
                               return FALSE; }}                    // Couldn't add; Bail!
                      }
                   }
-
+#endif
                   if(*rgxP == '(') {                              // Next char opens a new subgroup?
                      if(!attachCharBox(prog, &cb)) {            // then attach the existing newly-made chars-list now; don't have to wait for a post-operator.
                         return FALSE; }}
