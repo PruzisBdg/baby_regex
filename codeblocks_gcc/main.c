@@ -18,10 +18,12 @@
 // -------------------------------- main --------------------------------------
 
 extern void test_IPAddr(void);
+extern void test_Finds(void);
+extern void test_Groups(void);
 
 int main()
 {
-   test_IPAddr();
+   test_Groups();
    return 1;
 }
 

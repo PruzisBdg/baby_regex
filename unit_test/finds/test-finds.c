@@ -98,7 +98,7 @@ typedef struct {
     that are wrong; also if there are not the same number of matches as in 'chk'.
 */
 
-PRIVATE BOOL matchesOK(C8 *out, RegexLT_S_MatchList const *ml, S_MatchesCheck const *chk)
+PRIVATE BOOL matchesOK(C8 *out, RegexLT_S_MatchList const *ml, S_MatchesCheck const *chk, C8 const *src)
 {
    U8 c;
    BOOL rtn;
@@ -126,10 +126,29 @@ PRIVATE BOOL matchesOK(C8 *out, RegexLT_S_MatchList const *ml, S_MatchesCheck co
                   c,  ck->idx, ck->len, m->idx,  m->len);
          rtn = FALSE;
       }
+      if(m->at != src + m->idx)
+      {
+         sprintf(out + strlen(out), "\tWrong 'at'; expected [%u], got [%u]\r\n", ck->idx, m->at-src);
+      }
    }
    return rtn;
 }
 
+
+PRIVATE C8 const *printFlags(C8 *out, RegexLT_T_Flags f)
+{
+   if(f == 0)
+   {
+      out[0] = '\0';
+   }
+   else
+   {
+      sprintf(out, "<%s %s>",
+           f & _RegexLT_Flags_MatchLongest ? "match-longest" : "",
+           f & _RegexLT_Flags_MatchLast ? "match-last" : "");
+   }
+   return out;
+}
 
 
 /* -------------------------------- runOneTest_PrintOneLine --------------------------------------*/
@@ -142,7 +161,7 @@ PRIVATE BOOL runOneTest_PrintOneLine(U16 idx, S_Test const *t, bool printAllTest
    RegexLT_S_MatchList *ml = NULL;
 
    C8 rgx[200];
-   sprintf(rgx, "%-2d:   \'%-15s\' <- \'%-15s\'", idx, t->regex, t->src);           // Print the  regex and test string.
+   sprintf(rgx, "%-2d:   \'%-15s\' <- \'%-15s\' %s", idx, t->regex, t->src, printFlags((C8[30]){}, t->flags));           // Print the  regex and test string.
 
    if(t->replace == NULL)                                                           // This test is a match-only, no replace?
    {
@@ -159,7 +178,7 @@ PRIVATE BOOL runOneTest_PrintOneLine(U16 idx, S_Test const *t, bool printAllTest
          {
 
             C8 b0[100];
-            bool rtn = matchesOK(b0, ml, &t->matchChk);                             // if matches don't agree with those listed in the test, print the discrepancy
+            bool rtn = matchesOK(b0, ml, &t->matchChk, t->src);                             // if matches don't agree with those listed in the test, print the discrepancy
 
             if(rtn == false || printAllTests == true)
             {
@@ -281,6 +300,7 @@ void test_Finds(void)
       { "[ps]dog",      "lapdogs",              E_RegexRtn_Match,    {1, {{2,4}}}         },
       { "(dog)|cat",    "bigdogs",              E_RegexRtn_Match,    {2, {{3,3}, {3,3}}}, 0,  "My pet is a $1",    "My pet is a dog"  },
       { "34+",          "2344456344448",        E_RegexRtn_Match,    {1, {{1,4}}}         },
+      { "34+",          "2344456344448123445",  E_RegexRtn_Match,    {1, {{1,4}}}   },
       { "34+",          "2344456344448123445",  E_RegexRtn_Match,    {1, {{7,5}}},  _RegexLT_Flags_MatchLongest   },
       { "34+",          "2344456344448123445",  E_RegexRtn_Match,    {1, {{15,3}}}, _RegexLT_Flags_MatchLast      },
       { matchPhone1,    "414 777 9214",         E_RegexRtn_Match,    {1, {{0,12}}}  },
@@ -327,12 +347,49 @@ void test_Finds(void)
 }
 
 
+/* -------------------------------- test_Groups -------------------------------------------- */
+
+void test_Groups(void)
+{
+   S_Test const tests[] = {
+        { "34",               "1234343456",        E_RegexRtn_Match,    {1, {{2,2}}}         },
+      { "34+",          "2344456344448123445",  E_RegexRtn_Match,    {1, {{7,5}}},  _RegexLT_Flags_MatchLongest   },
+//      { "34",             "1234343456",        E_RegexRtn_Match,    {1, {{2,2}}}         },
+      //{ "(34){2}",          "1234343456",        E_RegexRtn_Match,    {1, {{4,4}}}         },
+   };
+
+   RegexLT_S_Cfg cfg = {
+      .getMem        = getMemCleared,
+      .free          = myFree,
+      .printEnable   = _TRACE_PRINTS_ON,
+      .maxSubmatches = 9,
+      .maxRegexLen   = MAX_U8,
+      .maxStrLen     = MAX_U8 };
+
+   RegexLT_Init(&cfg);
+
+   U8 c, fails;
+   for(c = 0, fails = 0; c < RECORDS_IN(tests); c++)
+   {
+      tdd_TestNum = c;
+      if( runOneTest_PrintOneLine(c, &tests[c], _PrintFailsOnly) == FALSE)
+         { fails++; }
+   }
+   if(fails > 0)
+   {
+      printf("\r\n------- %d Fail(s) --------\r\n", fails);
+      TEST_FAIL();
+   }
+
+}
+
+
 /* -------------------------------- test_IPAddr -------------------------------------------- */
 
 void test_IPAddr(void)
 {
    S_Test const tests[] = {
-      { "(34){2}",          "234343456",        E_RegexRtn_Match,    {1, {{1,4}}}         },
+      { "(34)",             "1234343456",        E_RegexRtn_Match,    {1, {{2,2}}}         },
 //      { "(a{2}_){3}",        "aa_aa_aa_",       E_RegexRtn_Match,    {1, {{0,6}}}},
 //      { "([\\d]{1,3}\\.){3}[\\d]{1,3}",        "192.168.1.14",       E_RegexRtn_Match,    {1, {{0,12}}}},
 #if 0

@@ -226,8 +226,6 @@ PRIVATE BOOL gotAtLeast1Char(S_CharsBox const *cb)
       - there's an illegal regex construction e.g ']' before an '['.
       - couldn't malloc() for a (needed) character class.
 */
-extern C8 const *opcodeNames(T_OpCode op);
-
 PRIVATE BOOL fillCharBox(S_ClassesList *cl, S_CharsBox *cb, C8 const **regexStr)
 {
    C8 ch;
