@@ -242,7 +242,7 @@ void test_Finds(void)
       //                                                      {how_many [start, len]..}
       // ----------------------------------------------------------------------------
       { "fob_([\\d]{5,10})_([\\d]{1,3})\\.log", "fob_098765432_1.log",    E_RegexRtn_Match,  {3, {{0,19}, {4,9}, {14,1}}}             },       // The empty string is no-match
-#if 1
+
       { "abc",          "",                     E_RegexRtn_NoMatch,  {0, {}}              },       // The empty string is no-match
       { "",             "abc",                  E_RegexRtn_Match,    {1, {{0,3}}}         },       // An empty regex matches everything
 
@@ -318,7 +318,7 @@ void test_Finds(void)
       // Indexed filename.
       { "fob_([\\d]{6})_([\\d]{1,3})\\.log",    "fob_123456_123.log",    E_RegexRtn_Match,  {3, {{0,18}, {4,6}, {11,3}}}             },       // The empty string is no-match
       { "fob_([\\d]{5,10})_([\\d]{1,3})\\.log", "fob_098765432_1.log",    E_RegexRtn_Match,  {3, {{0,19}, {4,9}, {14,1}}}             },       // The empty string is no-match
-#endif
+
    };
 
    RegexLT_S_Cfg cfg = {

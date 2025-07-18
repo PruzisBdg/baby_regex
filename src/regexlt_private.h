@@ -100,7 +100,7 @@ typedef U8 T_OpCode;       // Opcodes in compiled regex instructions
 /* These are opcodes & labels for both character lists 'S_CharSegs' and compiled regex
    instructions 'S_Instr'. 'Null' and 'Match' are common to both types.
 */
-enum {
+enum eOpCode {
    OpCode_Null = 0,           // Empty unwritten item
    OpCode_NOP,                // No-op is a placeholder for the start of a sub-group.
    OpCode_Chars,              // Contiguous segment of the regex string.
@@ -112,7 +112,7 @@ enum {
    OpCode_Split,              // Split into 2 simultaneous threads of execution.
    OpCode_Match,
    OpCode_EndCBox = OpCode_Match // Terminates both character box list and compiled regex instructions list.
-   } eOpCode;
+   };
 
 static inline BOOL isAnchor(C8 ch)
    { return ch == '^' || ch == '$'; }
