@@ -35,7 +35,7 @@
          #define _TDD_UNCONST
          #define _TARGET_IS _TARGET_UNITY_TDD
       #else
-         #ifdef _TARGET_IS_LIB_ARM
+         #ifdef __TARGET_IS_LIB_ARM
             #define _TARGET_IS _TARGET_LIB_ARM_GCC
             #define _EXPORT_FOR_TEST PRIVATE
             #define _TDD_UNCONST const
