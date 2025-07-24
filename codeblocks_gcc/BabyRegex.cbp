@@ -52,7 +52,7 @@
 		<Compiler>
 			<Add option="-Wall" />
 			<Add option="-std=c99" />
-			<Add directory="C:/unity/src" />
+			<Add directory="$(UNITY_PATH)/src" />
 			<Add directory="$(SPJ_SWR_LOC)/arith/public" />
 			<Add directory="$(SPJ_SWR_LOC)/libs_common/public" />
 			<Add directory="$(SPJ_SWR_LOC)/util/public" />
