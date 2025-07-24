@@ -16,8 +16,8 @@
 					<Add option="-D__TARGET_IS_CONSOLE" />
 				</Compiler>
 				<Linker>
-					<Add library="C:/spj6/swr/arith/arith_x86_gcc/bin/Debug/libarith_x86_gcc.a" />
-					<Add library="C:/spj6/swr/util/codeblocks_gcc/bin/Debug/libutil_x86_gcc.a" />
+					<Add library="$(SPJ_SWR_LOC)/arith/arith_x86_gcc/bin/Debug/libarith_x86_gcc.a" />
+					<Add library="$(SPJ_SWR_LOC)/util/codeblocks_gcc/bin/Debug/libutil_x86_gcc.a" />
 				</Linker>
 			</Target>
 			<Target title="Release">
@@ -53,9 +53,9 @@
 			<Add option="-Wall" />
 			<Add option="-std=c99" />
 			<Add directory="C:/unity/src" />
-			<Add directory="C:/spj6/swr/arith/public" />
-			<Add directory="C:/spj6/swr/tiny2/GenericTypes" />
-			<Add directory="C:/spj6/swr/util/public" />
+			<Add directory="$(SPJ_SWR_LOC)/arith/public" />
+			<Add directory="$(SPJ_SWR_LOC)/libs_common/public" />
+			<Add directory="$(SPJ_SWR_LOC)/util/public" />
 			<Add directory="../src" />
 			<Add directory="." />
 		</Compiler>
@@ -157,9 +157,6 @@
 			<Option target="Release" />
 		</Unit>
 		<Extensions>
-			<code_completion />
-			<envvars />
-			<debugger />
 			<lib_finder disable_auto="1" />
 		</Extensions>
 	</Project>
