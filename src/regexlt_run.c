@@ -15,7 +15,13 @@
 
 // Private to RegexLT_'.
 #define dbgPrint           regexlt_dbgPrint
+
+   #if _TARGET_IS == _TARGET_X86_CONSOLE || _TARGET_IS == _TARGET_UNITY_TDD
 #define errPrint           regexlt_errPrint
+   #else
+#define errPrint(...)
+   #endif
+
 #define safeFree           regexlt_safeFree
 #define safeFreeList       regexlt_safeFreeList
 #define getMemMultiple     regexlt_getMemMultiple
