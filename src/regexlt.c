@@ -191,10 +191,11 @@ PUBLIC T_RegexRtn RegexLT_Compile(C8 const *regexStr, void **progV)
 
 /* --------------------------------------- RegexLT_FreeProgram ---------------------------------- */
 
-PUBLIC T_RegexRtn RegexLT_FreeProgram(void *prog)
+PUBLIC T_RegexRtn RegexLT_FreeProgram(void const *prog)
 {
-   void *toFree[] = { ((S_Program*)prog)->classes.ccs, ((S_Program*)prog)->instrs.buf, ((S_Program*)prog)->chSegs.buf };
-   safeFreeList(toFree, RECORDS_IN(toFree));
+   if(prog != NULL) {
+      void *toFree[] = { ((S_Program*)prog)->classes.ccs, ((S_Program*)prog)->instrs.buf, ((S_Program*)prog)->chSegs.buf };
+      safeFreeList(toFree, RECORDS_IN(toFree)); }
    return E_RegexRtn_OK;
 }
 
